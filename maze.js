@@ -5,9 +5,7 @@
  * 1. WebGL initialization
  * 2. Maze generation using randomized DFS
  * 3. Maze geometry creation and rendering
- * 4. Sphere geometry creation and animation
- * 5. Pathfinding solver
- * 6. Phong shading implementation
+ * 4. Phong shading implementation
  */
 
 // Global variables
@@ -15,15 +13,11 @@ let gl;                       // WebGL context
 let program;                  // Shader program
 let maze = [];                // Maze grid
 const mazeSize = 10;          // Size of the maze (NxN)
-const cellSize = 0.18;        // Size of each cell
+const cellSize = 0.15;        // Size of each cell
 const wallHeight = 0.1;       // Height of the walls
 const wallThickness = 0.02;   // Thickness of the walls
 
-// Sphere animation variables
-let spherePosition = [];      // Current position of the sphere
-let path = [];                // Path from start to end
-let pathIndex = 0;            // Current index in the path
-let animationSpeed = 0.005;   // Speed of animation
+// Time tracking for animation
 let lastTime = 0;             // Time of last frame
 
 // Camera and view variables
@@ -33,7 +27,7 @@ let at = vec3(0, 0, 0);       // Look-at point
 let up = vec3(0, 0, -1);      // Up vector
 
 // Lighting parameters
-const lightPosition = vec4(1.0, 2.0, 1.0, 0.0);  // Directional light
+let lightPosition = vec4(0.0, 2.0, 0.0, 0.0);  // Directional light, default from top
 const ambientColor = vec4(0.2, 0.2, 0.2, 1.0);
 const diffuseColor = vec4(0.8, 0.8, 0.8, 1.0);
 const specularColor = vec4(1.0, 1.0, 1.0, 1.0);
@@ -51,12 +45,6 @@ let wallsNormalBuffer;
 let wallsColorBuffer;
 let wallsIndexBuffer;
 let wallsCount = 0;
-
-let sphereBuffer;
-let sphereNormalBuffer;
-let sphereColorBuffer;
-let sphereIndexBuffer;
-let sphereCount = 0;
 
 // Initialize WebGL when the page loads
 window.onload = function init() {
@@ -85,6 +73,15 @@ window.onload = function init() {
     program = initShaders(gl, "vertex-shader", "fragment-shader");
     gl.useProgram(program);
     
+    // Initialize ball if Ball module is available
+    console.log("Attempting to initialize Ball module");
+    if (typeof Ball !== 'undefined' && Ball.initBall) {
+        Ball.initBall(gl, program, mazeSize, cellSize, wallHeight);
+        console.log("Ball module initialized");
+    } else {
+        console.error("Ball module not available!");
+    }
+    
     // Set up camera angle control
     document.getElementById("cameraAngle").addEventListener("input", function(event) {
         cameraAngle = event.target.value;
@@ -98,7 +95,21 @@ window.onload = function init() {
         document.getElementById("brightnessValue").textContent = parseFloat(brightness).toFixed(1);
     });
     
-    // Generate the maze
+    // Set up light direction controls
+    const lightDirectionRadios = document.querySelectorAll('input[name="lightDirection"]');
+    lightDirectionRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            updateLightDirection(this.value);
+        });
+    });
+    
+    // Initial light direction setup
+    updateLightDirection('top');
+    
+    // Set up regenerate maze button
+    document.getElementById("regenerate").addEventListener("click", regenerateMaze);
+    
+    // Generate the initial maze
     generateMaze();
     
     // Solve the maze to find a path
@@ -118,8 +129,32 @@ window.onload = function init() {
     render();
 };
 
+// Regenerate the maze
+function regenerateMaze() {
+    console.log("Regenerating maze");
+    
+    // Generate new maze
+    generateMaze();
+    
+    // Solve the new maze
+    solveMaze();
+    
+    // Recreate geometry
+    createGeometry();
+    
+    // Reset ball position - make sure ball.js is loaded
+    if (typeof Ball !== 'undefined' && Ball.resetBallPosition) {
+        Ball.resetBallPosition();
+    } else {
+        console.error("Ball object not available");
+    }
+}
+
 // Generate a random maze using the Depth-First Search algorithm
 function generateMaze() {
+    // Clear existing maze if any
+    maze = [];
+    
     // Initialize maze grid with all walls intact
     for (let i = 0; i < mazeSize; i++) {
         maze[i] = [];
@@ -135,10 +170,9 @@ function generateMaze() {
     // Stack for DFS
     const stack = [];
     
-    // Start at a random cell
+    // Start at the entrance (top-left)
     const startX = 0;
     const startY = 0;
-    spherePosition = [startX, startY];
     
     // Mark the start cell as visited
     maze[startY][startX].visited = true;
@@ -184,16 +218,33 @@ function getUnvisitedNeighbors(x, y) {
     const dx = [0, 1, 0, -1];
     const dy = [-1, 0, 1, 0];
     
+    // Shuffle directions for more randomness
+    const directions = [0, 1, 2, 3];
+    shuffleArray(directions);
+    
+    // Check each direction in random order
     for (let i = 0; i < 4; i++) {
-        const newX = x + dx[i];
-        const newY = y + dy[i];
+        const dir = directions[i];
+        const newX = x + dx[dir];
+        const newY = y + dy[dir];
         
-        if (newX >= 0 && newX < mazeSize && newY >= 0 && newY < mazeSize && !maze[newY][newX].visited) {
-            neighbors.push({x: newX, y: newY, direction: i});
+        if (newX >= 0 && newX < mazeSize && 
+            newY >= 0 && newY < mazeSize && 
+            !maze[newY][newX].visited) {
+            neighbors.push({x: newX, y: newY, direction: dir});
         }
     }
     
     return neighbors;
+}
+
+// Shuffle array elements using Fisher-Yates algorithm
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
 }
 
 // Remove the wall between two cells
@@ -272,21 +323,45 @@ function solveMaze() {
     
     // Reconstruct the path from exit to entrance
     let current = {x: mazeSize - 1, y: mazeSize - 1};
-    path = [current];
+    let newPath = [current];
     
     while (current.x !== startX || current.y !== startY) {
         current = parent[current.y][current.x];
-        path.push(current);
+        newPath.push(current);
     }
     
     // Reverse the path to go from entrance to exit
-    path.reverse();
+    newPath.reverse();
+    
+    // Update the ball's path if Ball module is available
+    if (typeof Ball !== 'undefined' && Ball.setPath) {
+        Ball.setPath(newPath);
+        console.log("Path sent to ball module");
+    } else {
+        console.error("Ball module not available for path setting");
+    }
 }
 
 // Create the geometry for the walls and sphere
 function createGeometry() {
+    console.log("Creating geometry");
+    
+    // Clear existing buffers if they exist
+    if (wallsBuffer) {
+        gl.deleteBuffer(wallsBuffer);
+        gl.deleteBuffer(wallsNormalBuffer);
+        gl.deleteBuffer(wallsColorBuffer);
+        gl.deleteBuffer(wallsIndexBuffer);
+    }
+    
     createWallsGeometry();
-    createSphereGeometry();
+    
+    // Create sphere geometry - make sure ball.js is loaded
+    if (typeof Ball !== 'undefined' && Ball.createSphereGeometry) {
+        Ball.createSphereGeometry();
+    } else {
+        console.error("Ball object not available for geometry creation");
+    }
 }
 
 // Create the geometry for the maze walls
@@ -504,77 +579,33 @@ function createFloor(vertices, normals, colors, indices, x, y, z, width, height,
     );
 }
 
-// Create a sphere for the path follower
-function createSphereGeometry() {
-    const vertices = [];
-    const normals = [];
-    const colors = [];
-    const indices = [];
+/**
+ * Update the light direction based on the selected option
+ * @param {String} direction - Direction option ('top', 'topRight', or 'topLeft')
+ */
+function updateLightDirection(direction) {
+    console.log("Updating light direction to:", direction);
     
-    // Sphere parameters
-    const radius = 0.04;
-    const latitudeBands = 20;
-    const longitudeBands = 20;
-    
-    // Generate sphere vertices
-    for (let lat = 0; lat <= latitudeBands; lat++) {
-        const theta = lat * Math.PI / latitudeBands;
-        const sinTheta = Math.sin(theta);
-        const cosTheta = Math.cos(theta);
-        
-        for (let long = 0; long <= longitudeBands; long++) {
-            const phi = long * 2 * Math.PI / longitudeBands;
-            const sinPhi = Math.sin(phi);
-            const cosPhi = Math.cos(phi);
-            
-            // Calculate vertex position
-            const x = cosPhi * sinTheta;
-            const y = cosTheta;
-            const z = sinPhi * sinTheta;
-            
-            // Add vertex and normal
-            vertices.push(vec4(radius * x, radius * y, radius * z, 1.0));
-            normals.push(vec4(x, y, z, 0.0));
-            
-            // Color (red for the sphere)
-            colors.push(vec4(1.0, 0.0, 0.0, 1.0));
-        }
+    // Reset light position based on selected direction
+    switch(direction) {
+        case 'top':
+            // Light directly from above
+            lightPosition = vec4(0.0, 2.0, 0.0, 0.0);
+            break;
+        case 'topRight':
+            // Light from top-right
+            lightPosition = vec4(1.5, 2.0, 1.5, 0.0);
+            break;
+        case 'topLeft':
+            // Light from top-left
+            lightPosition = vec4(-1.5, 2.0, 1.5, 0.0);
+            break;
+        default:
+            // Default to top if unknown value
+            lightPosition = vec4(0.0, 2.0, 0.0, 0.0);
     }
     
-    // Generate indices
-    for (let lat = 0; lat < latitudeBands; lat++) {
-        for (let long = 0; long < longitudeBands; long++) {
-            const first = lat * (longitudeBands + 1) + long;
-            const second = first + longitudeBands + 1;
-            
-            indices.push(first);
-            indices.push(second);
-            indices.push(first + 1);
-            
-            indices.push(second);
-            indices.push(second + 1);
-            indices.push(first + 1);
-        }
-    }
-    
-    // Set up buffer objects
-    sphereBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, sphereBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, flatten(vertices), gl.STATIC_DRAW);
-    
-    sphereNormalBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, sphereNormalBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, flatten(normals), gl.STATIC_DRAW);
-    
-    sphereColorBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, sphereColorBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, flatten(colors), gl.STATIC_DRAW);
-    
-    sphereIndexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphereIndexBuffer);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
-    
-    sphereCount = indices.length;
+    // No need to call render explicitly as it will update on the next animation frame
 }
 
 // Update the camera position based on the camera angle
@@ -651,9 +682,11 @@ function render(timestamp) {
     // Draw the walls
     drawWalls();
     
-    // Update and draw the sphere
-    updateSpherePosition(deltaTime);
-    drawSphere();
+    // Update and draw the sphere if Ball module is available
+    if (typeof Ball !== 'undefined') {
+        if (Ball.updateSpherePosition) Ball.updateSpherePosition(deltaTime);
+        if (Ball.drawSphere) Ball.drawSphere(eye, at, up);
+    }
     
     // Request next frame
     requestAnimationFrame(render);
@@ -682,84 +715,4 @@ function drawWalls() {
     // Draw the walls
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, wallsIndexBuffer);
     gl.drawElements(gl.TRIANGLES, wallsCount, gl.UNSIGNED_SHORT, 0);
-}
-
-// Draw the sphere
-function drawSphere() {
-    // Set up vertex position attribute
-    const vPosition = gl.getAttribLocation(program, "vPosition");
-    gl.bindBuffer(gl.ARRAY_BUFFER, sphereBuffer);
-    gl.vertexAttribPointer(vPosition, 4, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(vPosition);
-    
-    // Set up normal attribute
-    const vNormal = gl.getAttribLocation(program, "vNormal");
-    gl.bindBuffer(gl.ARRAY_BUFFER, sphereNormalBuffer);
-    gl.vertexAttribPointer(vNormal, 4, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(vNormal);
-    
-    // Set up color attribute
-    const vColor = gl.getAttribLocation(program, "vColor");
-    gl.bindBuffer(gl.ARRAY_BUFFER, sphereColorBuffer);
-    gl.vertexAttribPointer(vColor, 4, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(vColor);
-    
-    // Calculate sphere position
-    const offsetX = -((mazeSize * cellSize) / 2);
-    const offsetZ = -((mazeSize * cellSize) / 2);
-    
-    const x = (spherePosition[0] + 0.5) * cellSize + offsetX;
-    const y = wallHeight / 2 + 0.04; // Just above the floor
-    const z = (spherePosition[1] + 0.5) * cellSize + offsetZ;
-    
-    // Apply model transformation to the sphere
-    const sphereModelView = mult(lookAt(eye, at, up), translate(x, y, z));
-    
-    // Update the model-view matrix
-    const modelViewMatrixLoc = gl.getUniformLocation(program, "modelViewMatrix");
-    gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(sphereModelView));
-    
-    // Update normal matrix for the sphere
-    const normalMatrix = [
-        vec3(sphereModelView[0][0], sphereModelView[0][1], sphereModelView[0][2]),
-        vec3(sphereModelView[1][0], sphereModelView[1][1], sphereModelView[1][2]),
-        vec3(sphereModelView[2][0], sphereModelView[2][1], sphereModelView[2][2])
-    ];
-    const normalMatrixLoc = gl.getUniformLocation(program, "normalMatrix");
-    gl.uniformMatrix3fv(normalMatrixLoc, false, flatten(normalMatrix));
-    
-    // Draw the sphere
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphereIndexBuffer);
-    gl.drawElements(gl.TRIANGLES, sphereCount, gl.UNSIGNED_SHORT, 0);
-}
-
-// Update the sphere position along the path
-function updateSpherePosition(deltaTime) {
-    if (pathIndex >= path.length - 1) {
-        // Restart animation when reached the end
-        pathIndex = 0;
-        spherePosition = [path[0].x, path[0].y];
-        return;
-    }
-    
-    // Current and next positions in the path
-    const current = path[pathIndex];
-    const next = path[pathIndex + 1];
-    
-    // Linear interpolation between current and next
-    const t = animationSpeed * deltaTime;
-    
-    // Update position
-    spherePosition[0] += (next.x - spherePosition[0]) * t;
-    spherePosition[1] += (next.y - spherePosition[1]) * t;
-    
-    // Check if close enough to the next position
-    const dx = next.x - spherePosition[0];
-    const dy = next.y - spherePosition[1];
-    const distSquared = dx * dx + dy * dy;
-    
-    if (distSquared < 0.001) {
-        // Move to the next position in the path
-        pathIndex++;
-    }
 } 

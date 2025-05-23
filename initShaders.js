@@ -1,4 +1,4 @@
-                                             //
+//
 //  initShaders.js
 //
 
