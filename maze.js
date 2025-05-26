@@ -579,29 +579,26 @@ function updateLightDirection(direction) {
 
 // Update the camera position based on the camera angle
 function updateCamera() {
-    // Convert angle to radians
+    // Convert angle to radians (0° = top view, 90° = side view)
     const rad = cameraAngle * Math.PI / 180.0;
     
-    // Calculate camera position on a sphere around the maze center
+    // Calculate camera position with elevation change
+    // At 0°: camera is directly above (0, 3, 0)
+    // At 90°: camera is at side level (3, 0, 0)
+    const distance = 3.0; // Distance from maze center
+    
     eye = vec3(
-        2 * Math.sin(rad),
-        2 * Math.cos(rad),
-        0
+        distance * Math.sin(rad), // X position: 0 at top, max at side
+        distance * Math.cos(rad), // Y position: max at top, 0 at side
+        0                         // Z position: always 0 (looking along Z-axis)
     );
     
-    // Keep the camera pointed at the center of the maze
+    // Always look at the center of the maze
     at = vec3(0, 0, 0);
     
-    // Calculate smooth up vector transition based on camera angle
-    // Use interpolation to avoid sudden jumps
-    const normalizedAngle = cameraAngle / 90.0; // Normalize to 0-1 range
-    
-    // Smooth transition from (0, 0, -1) at 0° to (0, 1, 0) at 90°
-    // Using a smooth interpolation function
-    const upY = Math.sin(normalizedAngle * Math.PI / 2); // Smooth curve from 0 to 1
-    const upZ = -Math.cos(normalizedAngle * Math.PI / 2); // Smooth curve from -1 to 0
-    
-    up = vec3(0, upY, upZ);
+    // Simple, consistent up vector
+    // Always point "up" in the world Y direction
+    up = vec3(0, 1, 0);
 }
 
 // Render the scene
