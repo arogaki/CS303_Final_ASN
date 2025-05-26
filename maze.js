@@ -73,15 +73,6 @@ window.onload = function init() {
     program = initShaders(gl, "vertex-shader", "fragment-shader");
     gl.useProgram(program);
     
-    // Initialize ball if Ball module is available
-    console.log("Attempting to initialize Ball module");
-    if (typeof Ball !== 'undefined' && Ball.initBall) {
-        Ball.initBall(gl, program, mazeSize, cellSize, wallHeight);
-        console.log("Ball module initialized");
-    } else {
-        console.error("Ball module not available!");
-    }
-    
     // Set up camera angle control
     document.getElementById("cameraAngle").addEventListener("input", function(event) {
         cameraAngle = event.target.value;
@@ -118,12 +109,6 @@ window.onload = function init() {
     // Create the geometry for the walls and sphere
     createGeometry();
     
-    // Pass maze data to Ball module for collision detection
-    if (typeof Ball !== 'undefined' && Ball.setMaze) {
-        Ball.setMaze(maze);
-        console.log("Maze data passed to Ball module");
-    }
-    
     // Handle window resizing
     window.addEventListener('resize', function() {
         canvas.width = window.innerWidth * 0.8;
@@ -147,18 +132,6 @@ function regenerateMaze() {
     
     // Recreate geometry
     createGeometry();
-    
-    // Pass new maze data to Ball module
-    if (typeof Ball !== 'undefined' && Ball.setMaze) {
-        Ball.setMaze(maze);
-    }
-    
-    // Reset ball position - make sure ball.js is loaded
-    if (typeof Ball !== 'undefined' && Ball.resetBallPosition) {
-        Ball.resetBallPosition();
-    } else {
-        console.error("Ball object not available");
-    }
 }
 
 // Generate a random maze using the Depth-First Search algorithm
@@ -343,14 +316,6 @@ function solveMaze() {
     
     // Reverse the path to go from entrance to exit
     newPath.reverse();
-    
-    // Update the ball's path if Ball module is available
-    if (typeof Ball !== 'undefined' && Ball.setPath) {
-        Ball.setPath(newPath);
-        console.log("Path sent to ball module");
-    } else {
-        console.error("Ball module not available for path setting");
-    }
 }
 
 // Create the geometry for the walls and sphere
@@ -366,13 +331,6 @@ function createGeometry() {
     }
     
     createWallsGeometry();
-    
-    // Create sphere geometry - make sure ball.js is loaded
-    if (typeof Ball !== 'undefined' && Ball.createSphereGeometry) {
-        Ball.createSphereGeometry();
-    } else {
-        console.error("Ball object not available for geometry creation");
-    }
 }
 
 // Create the geometry for the maze walls
@@ -692,12 +650,6 @@ function render(timestamp) {
     
     // Draw the walls
     drawWalls();
-    
-    // Update and draw the sphere if Ball module is available
-    if (typeof Ball !== 'undefined') {
-        if (Ball.updateSpherePosition) Ball.updateSpherePosition(deltaTime);
-        if (Ball.drawSphere) Ball.drawSphere(eye, at, up);
-    }
     
     // Request next frame
     requestAnimationFrame(render);
