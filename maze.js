@@ -53,8 +53,8 @@ window.onload = function init() {
     const canvas = document.getElementById("gl-canvas");
     
     // Set canvas to 80% of window dimensions for a smaller view
-    canvas.width = window.innerWidth * 0.8;
-    canvas.height = window.innerHeight * 0.8;
+    canvas.width = window.innerWidth * 0.9;
+    canvas.height = window.innerHeight * 0.9;
     
     gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
     
@@ -581,19 +581,19 @@ function updateCamera() {
 }
 
 // Render the scene
-function render(timestamp) {
+function render(timestamp) {　// Use timestamp to calculate time delta
     // Calculate time delta
     if (!lastTime) {
         lastTime = timestamp || 0;
     }
-    const deltaTime = timestamp - lastTime;
+    const deltaTime = timestamp - lastTime; // Calculate time delta
     lastTime = timestamp;
     
     // Clear the canvas
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     
     // Update camera position
-    updateCamera();
+    updateCamera(); 
     
     // Set up view and projection matrices
     const modelViewMatrix = lookAt(eye, at, up);

@@ -430,20 +430,3 @@ const distance = baseDistance + (mazeSize - 10) * 0.2;
 3. **Lighting Control**: Brightness and directional lighting
 4. **Maze Regeneration**: Create new random layouts
 5. **Real-time Interaction**: All controls update immediately
-
-## 🛠️ Development Insights
-
-### **Algorithm Complexity**
-- **Maze Generation**: O(n²) time, O(n²) space
-- **Pathfinding**: O(n²) time, O(n²) space
-- **Rendering**: O(walls) per frame
-
-### **Memory Management**
-- Dynamic buffer allocation/deallocation
-- Efficient vertex data packing
-- Minimal GPU memory usage
-
-### **Cross-Platform Compatibility**
-- WebGL 1.0 compatibility
-- Responsive design principles
-- Modern browser support 
