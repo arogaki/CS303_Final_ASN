@@ -583,36 +583,26 @@ function updateCamera() {
     const rad = cameraAngle * Math.PI / 180.0;
     
     // Calculate camera position with elevation change
-    // Ensure minimum distance to avoid clipping issues
+    // At 0°: camera is slightly angled above (0.2, 3, 0) to see walls
+    // At 90°: camera is at side level (3, 0, 0)
     const distance = 3.0; // Distance from maze center
-    const minHeight = 0.5; // Minimum height to avoid getting too close
+    
+    // Add a small offset at 0° to ensure walls are visible
+    const minAngleOffset = 0.1; // Minimum angle to see walls (about 6 degrees)
+    const adjustedRad = Math.max(rad, minAngleOffset);
     
     eye = vec3(
-        distance * Math.sin(rad), // X position: 0 at top, max at side
-        Math.max(distance * Math.cos(rad), minHeight), // Y position: max at top, min at side
-        0                         // Z position: always 0 (looking along Z-axis)
+        distance * Math.sin(adjustedRad), // X position: small value at top, max at side
+        distance * Math.cos(adjustedRad), // Y position: slightly less than max at top, 0 at side
+        0                                 // Z position: always 0 (looking along Z-axis)
     );
     
     // Always look at the center of the maze
     at = vec3(0, 0, 0);
     
-    // Adjust up vector based on camera angle to handle top-down view properly
-    if (cameraAngle < 10) {
-        // For near top-down view, use Z-axis as up vector
-        up = vec3(0, 0, -1);
-    } else if (cameraAngle > 80) {
-        // For near side view, use Y-axis as up vector
-        up = vec3(0, 1, 0);
-    } else {
-        // For intermediate angles, interpolate between the two
-        const t = (cameraAngle - 10) / 70; // Normalize to 0-1 range
-        const upY = t;
-        const upZ = -(1 - t);
-        up = vec3(0, upY, upZ);
-        // Normalize the up vector
-        const length = Math.sqrt(upY * upY + upZ * upZ);
-        up = vec3(0, upY / length, upZ / length);
-    }
+    // Simple, consistent up vector
+    // Always point "up" in the world Y direction
+    up = vec3(0, 1, 0);
 }
 
 // Render the scene
