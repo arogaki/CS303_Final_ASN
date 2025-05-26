@@ -5,7 +5,6 @@ A sophisticated 3D maze visualization application built with WebGL, featuring dy
 ## 🎯 Features Overview & Textbook Connections
 
 ### 1. **Dynamic Maze Generation Algorithm**
-**Textbook Reference**: Chapter 10 - Procedural Methods
 - **Implementation**: `maze.js` lines 138-196
 - **Algorithm**: Randomized Depth-First Search (DFS)
 - **Code Breakdown**:
@@ -44,12 +43,12 @@ while (stack.length > 0) {
 ```
 
 ### 2. **Pathfinding System**
-**Textbook Reference**: Chapter 9 - Modeling and Hierarchy (Tree Traversal)
 - **Implementation**: `maze.js` lines 253-320
 - **Algorithm**: Breadth-First Search (BFS)
 - **Code Breakdown**:
 ```javascript
 // BFS queue initialization (lines 256-265)
+// We will use it for main character and enemy
 const queue = [];
 const visited = Array(mazeSize).fill().map(() => Array(mazeSize).fill(false));
 const parent = Array(mazeSize).fill().map(() => Array(mazeSize).fill(null));
@@ -88,7 +87,6 @@ newPath.reverse();
 ```
 
 ### 3. **3D Geometry Generation**
-**Textbook Reference**: Chapter 4 - Geometric Objects and Transformations
 - **Implementation**: `maze.js` lines 337-508
 - **Wall Creation Logic** (lines 428-508):
 ```javascript
@@ -134,7 +132,6 @@ function createWall(vertices, normals, colors, indices, x1, y, z1, x2, y, z2, in
 ```
 
 ### 4. **Camera System Implementation**
-**Textbook Reference**: Chapter 5 - Viewing
 - **Implementation**: `maze.js` lines 581-608
 - **Mathematical Foundation**:
 ```javascript
@@ -162,7 +159,6 @@ function updateCamera() {
 ```
 
 ### 5. **Lighting System (Phong Model)**
-**Textbook Reference**: Chapter 6 - Lighting and Shading
 - **Vertex Shader** (`index.html` lines 78-102):
 ```glsl
 attribute vec4 vPosition;
@@ -225,7 +221,6 @@ void main() {
 ```
 
 ### 6. **WebGL Buffer Management**
-**Textbook Reference**: Chapter 2 - Graphics Programming
 - **Implementation**: `maze.js` lines 409-427
 ```javascript
 function createWallsGeometry() {
@@ -328,79 +323,6 @@ lightDirectionRadios.forEach(radio => {
         updateLightDirection(this.value);
     });
 });
-```
-
-## 🏗️ Advanced Technical Concepts
-
-### **Matrix Mathematics Implementation**
-**Textbook Reference**: Chapter 4.5 - Matrix and Vector Types
-- Uses `MVnew.js` library for matrix operations
-- Implements homogeneous coordinates for transformations
-- Proper matrix multiplication order for transformations
-
-### **Hidden Surface Removal**
-**Textbook Reference**: Chapter 12.6.5 - The z-Buffer Algorithm
-```javascript
-// Depth testing enabled in initialization
-gl.enable(gl.DEPTH_TEST);
-
-// Clear depth buffer each frame
-gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-```
-
-### **Vertex Attribute Management**
-**Textbook Reference**: Chapter 2.4.5 - Vertex Attributes
-```javascript
-function drawWalls() {
-    // Position attribute
-    const vPosition = gl.getAttribLocation(program, "vPosition");
-    gl.bindBuffer(gl.ARRAY_BUFFER, wallsBuffer);
-    gl.vertexAttribPointer(vPosition, 4, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(vPosition);
-    
-    // Normal attribute
-    const vNormal = gl.getAttribLocation(program, "vNormal");
-    gl.bindBuffer(gl.ARRAY_BUFFER, wallsNormalBuffer);
-    gl.vertexAttribPointer(vNormal, 4, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(vNormal);
-    
-    // Color attribute
-    const vColor = gl.getAttribLocation(program, "vColor");
-    gl.bindBuffer(gl.ARRAY_BUFFER, wallsColorBuffer);
-    gl.vertexAttribPointer(vColor, 4, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(vColor);
-    
-    // Indexed drawing
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, wallsIndexBuffer);
-    gl.drawElements(gl.TRIANGLES, wallsCount, gl.UNSIGNED_SHORT, 0);
-}
-```
-
-## 📚 Textbook Chapter Mapping
-
-| Feature | Textbook Chapter | Implementation |
-|---------|------------------|----------------|
-| WebGL Setup | Chapter 2 | `maze.js` lines 41-66 |
-| Event Handling | Chapter 3 | `maze.js` lines 67-105 |
-| 3D Geometry | Chapter 4 | `maze.js` lines 337-508 |
-| Camera System | Chapter 5 | `maze.js` lines 581-608 |
-| Lighting Model | Chapter 6 | Shaders + `maze.js` lines 555-580 |
-| Rendering Pipeline | Chapter 12 | `maze.js` lines 609-664 |
-| Procedural Generation | Chapter 10 | `maze.js` lines 138-196 |
-| Tree Traversal | Chapter 9 | `maze.js` lines 253-320 |
-
-## 🔧 Performance Optimizations
-
-### **Buffer Reuse Strategy**
-```javascript
-// Efficient buffer management
-if (wallsBuffer) {
-    gl.deleteBuffer(wallsBuffer);
-    gl.deleteBuffer(wallsNormalBuffer);
-    gl.deleteBuffer(wallsColorBuffer);
-    gl.deleteBuffer(wallsIndexBuffer);
-}
-```
 
 ### **Single Draw Call Optimization**
 - All maze walls rendered in single `drawElements` call
