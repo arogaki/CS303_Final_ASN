@@ -1,263 +1,449 @@
 # WebGL 3D Maze Generator with Pathfinding
 
-A sophisticated 3D maze visualization application built with WebGL, featuring dynamic maze generation, pathfinding algorithms, and interactive camera controls.
+A sophisticated 3D maze visualization application built with WebGL, featuring dynamic maze generation, pathfinding algorithms, and interactive camera controls. This project demonstrates comprehensive computer graphics concepts from Dave Shreiner's "Interactive Computer Graphics" textbook.
 
-## English Version
+## 🎯 Features Overview & Textbook Connections
 
-### 🎯 Features Overview
-
-#### 1. **Dynamic Maze Generation**
+### 1. **Dynamic Maze Generation Algorithm**
+**Textbook Reference**: Chapter 10 - Procedural Methods
 - **Implementation**: `maze.js` lines 138-196
 - **Algorithm**: Randomized Depth-First Search (DFS)
-- **Logic**: 
-  - Initializes a grid with all walls intact
-  - Uses a stack-based DFS to carve paths through the maze
-  - Ensures all cells are reachable while maintaining maze properties
-  - Creates entrance (top-left) and exit (bottom-right) openings
+- **Code Breakdown**:
+```javascript
+// Initialize maze grid with all walls intact (lines 142-152)
+for (let i = 0; i < mazeSize; i++) {
+    maze[i] = [];
+    for (let j = 0; j < mazeSize; j++) {
+        maze[i][j] = {
+            visited: false,
+            walls: [true, true, true, true] // [top, right, bottom, left]
+        };
+    }
+}
 
-#### 2. **Pathfinding System**
+// Stack-based DFS implementation (lines 154-185)
+const stack = [];
+maze[startY][startX].visited = true;
+stack.push({x: startX, y: startY});
+
+while (stack.length > 0) {
+    const current = stack[stack.length - 1];
+    const neighbors = getUnvisitedNeighbors(current.x, current.y);
+    
+    if (neighbors.length > 0) {
+        // Choose random neighbor and carve path
+        const randomIndex = Math.floor(Math.random() * neighbors.length);
+        const next = neighbors[randomIndex];
+        removeWallBetween(current, next);
+        maze[next.y][next.x].visited = true;
+        stack.push(next);
+    } else {
+        stack.pop(); // Backtrack
+    }
+}
+```
+
+### 2. **Pathfinding System**
+**Textbook Reference**: Chapter 9 - Modeling and Hierarchy (Tree Traversal)
 - **Implementation**: `maze.js` lines 253-320
 - **Algorithm**: Breadth-First Search (BFS)
-- **Logic**:
-  - Finds the shortest path from entrance to exit
-  - Uses queue-based BFS for optimal path discovery
-  - Reconstructs path using parent tracking
-  - Guarantees shortest solution due to BFS properties
+- **Code Breakdown**:
+```javascript
+// BFS queue initialization (lines 256-265)
+const queue = [];
+const visited = Array(mazeSize).fill().map(() => Array(mazeSize).fill(false));
+const parent = Array(mazeSize).fill().map(() => Array(mazeSize).fill(null));
 
-#### 3. **3D Visualization Engine**
+// BFS traversal (lines 273-300)
+while (queue.length > 0) {
+    const current = queue.shift();
+    
+    if (current.x === mazeSize - 1 && current.y === mazeSize - 1) {
+        break; // Found exit
+    }
+    
+    // Check all four directions
+    for (let i = 0; i < 4; i++) {
+        if (!maze[current.y][current.x].walls[i]) { // No wall in this direction
+            const newX = current.x + dx[i];
+            const newY = current.y + dy[i];
+            
+            if (!visited[newY][newX]) {
+                visited[newY][newX] = true;
+                parent[newY][newX] = {x: current.x, y: current.y};
+                queue.push({x: newX, y: newY});
+            }
+        }
+    }
+}
+
+// Path reconstruction (lines 302-312)
+let current = {x: mazeSize - 1, y: mazeSize - 1};
+let newPath = [current];
+while (current.x !== startX || current.y !== startY) {
+    current = parent[current.y][current.x];
+    newPath.push(current);
+}
+newPath.reverse();
+```
+
+### 3. **3D Geometry Generation**
+**Textbook Reference**: Chapter 4 - Geometric Objects and Transformations
 - **Implementation**: `maze.js` lines 337-508
-- **Components**:
-  - **Wall Generation** (lines 428-508): Creates 3D wall segments with proper normals
-  - **Floor Generation** (lines 509-554): Renders maze floor with appropriate texturing
-  - **Geometry Management**: Dynamic vertex buffer creation and management
+- **Wall Creation Logic** (lines 428-508):
+```javascript
+function createWall(vertices, normals, colors, indices, x1, y, z1, x2, y, z2, indexOffset) {
+    const isHorizontal = z1 === z2;
+    
+    if (isHorizontal) {
+        // Horizontal wall vertices (8 vertices for 3D box)
+        vertices.push(
+            vec4(x1, y, z1, 1.0),                           // bottom left
+            vec4(x2, y, z2, 1.0),                           // bottom right
+            vec4(x2, y + wallHeight, z2, 1.0),              // top right
+            vec4(x1, y + wallHeight, z1, 1.0),              // top left
+            vec4(x1, y, z1 - wallThickness, 1.0),           // back bottom left
+            vec4(x2, y, z2 - wallThickness, 1.0),           // back bottom right
+            vec4(x2, y + wallHeight, z2 - wallThickness, 1.0), // back top right
+            vec4(x1, y + wallHeight, z1 - wallThickness, 1.0)  // back top left
+        );
+        
+        // Normal vectors for lighting calculations
+        normals.push(vec4(0, 0, 1, 0));  // Front face normal
+        normals.push(vec4(0, 0, 1, 0));
+        // ... (repeated for all vertices)
+    }
+    
+    // Index generation for triangulation (lines 490-508)
+    const faces = [
+        [0, 1, 2, 3],     // Front face
+        [4, 5, 6, 7],     // Back face
+        [3, 2, 6, 7],     // Top face
+        [0, 1, 5, 4],     // Bottom face
+        [1, 2, 6, 5],     // Right face
+        [0, 3, 7, 4]      // Left face
+    ];
+    
+    for (const face of faces) {
+        indices.push(
+            face[0] + indexOffset, face[1] + indexOffset, face[2] + indexOffset,
+            face[0] + indexOffset, face[2] + indexOffset, face[3] + indexOffset
+        );
+    }
+}
+```
 
-#### 4. **Interactive Camera System**
+### 4. **Camera System Implementation**
+**Textbook Reference**: Chapter 5 - Viewing
 - **Implementation**: `maze.js` lines 581-608
-- **Features**:
-  - **Smooth Elevation Control**: Natural transition from top-down to side view
-  - **Automatic Distance Scaling**: Camera distance adjusts based on maze size
-  - **Twist-Free Movement**: Consistent up vector prevents disorienting rotations
-- **Logic**:
-  - Uses trigonometric functions for smooth camera positioning
-  - Implements minimum angle offset to ensure maze visibility at 0°
-  - Scales viewing distance proportionally to maze dimensions
+- **Mathematical Foundation**:
+```javascript
+function updateCamera() {
+    const rad = cameraAngle * Math.PI / 180.0;
+    
+    // Spherical coordinate conversion (Chapter 5.3 - Positioning of the Camera)
+    const baseDistance = 3.0;
+    const distance = baseDistance + (mazeSize - 10) * 0.2; // Dynamic scaling
+    
+    // Minimum angle offset to prevent gimbal lock-like issues
+    const minAngleOffset = 0.1;
+    const adjustedRad = Math.max(rad, minAngleOffset);
+    
+    // Eye position calculation using trigonometry
+    eye = vec3(
+        distance * Math.sin(adjustedRad), // X component
+        distance * Math.cos(adjustedRad), // Y component (elevation)
+        0                                 // Z component (fixed)
+    );
+    
+    at = vec3(0, 0, 0);  // Look-at point (maze center)
+    up = vec3(0, 1, 0);  // Consistent up vector
+}
+```
 
-#### 5. **Advanced Lighting System**
-- **Implementation**: 
-  - **Setup**: `maze.js` lines 555-580
-  - **Shaders**: `index.html` lines 78-157
-- **Features**:
-  - **Phong Lighting Model**: Ambient, diffuse, and specular components
-  - **Multiple Light Directions**: Top, top-right, top-left positioning
-  - **Dynamic Brightness Control**: Real-time lighting intensity adjustment
-- **Logic**:
-  - Per-fragment lighting calculations in fragment shader
-  - Normal vector transformations for accurate lighting
-  - Material property integration for realistic surface appearance
+### 5. **Lighting System (Phong Model)**
+**Textbook Reference**: Chapter 6 - Lighting and Shading
+- **Vertex Shader** (`index.html` lines 78-102):
+```glsl
+attribute vec4 vPosition;
+attribute vec4 vNormal;
+attribute vec4 vColor;
 
-#### 6. **User Interface Controls**
-- **Implementation**: `index.html` lines 58-82, `maze.js` lines 67-105
-- **Components**:
-  - **Maze Size Slider** (5×5 to 25×25): Dynamic maze dimension control
-  - **Camera Angle Slider** (0° to 90°): Smooth viewing angle adjustment
-  - **Brightness Control** (0.1 to 2.0): Lighting intensity modification
-  - **Light Direction Radio Buttons**: Directional lighting selection
-  - **Regenerate Button**: New maze generation trigger
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+uniform mat3 normalMatrix;
 
-#### 7. **Dynamic Maze Sizing**
-- **Implementation**: `maze.js` lines 73-80, 587
-- **Logic**:
-  - Real-time maze size adjustment without regeneration
-  - Automatic camera distance scaling for optimal viewing
-  - Efficient geometry recreation for new dimensions
-  - Maintains aspect ratio and visual quality across all sizes
+varying vec3 fNormal;
+varying vec3 fPosition;
+varying vec4 fColor;
 
-### 🏗️ Architecture & Design Philosophy
+void main() {
+    // Transform vertex to eye coordinates (Chapter 5.7)
+    fPosition = (modelViewMatrix * vPosition).xyz;
+    
+    // Transform normal to eye coordinates (Chapter 6.4.1)
+    fNormal = normalMatrix * vNormal.xyz;
+    
+    fColor = vColor;
+    gl_Position = projectionMatrix * modelViewMatrix * vPosition;
+}
+```
 
-#### **Modular Design Pattern**
-- **Separation of Concerns**: Clear distinction between rendering, logic, and UI
-- **Function-Based Architecture**: Each major feature encapsulated in dedicated functions
-- **State Management**: Global variables for shared state with local scope for operations
+- **Fragment Shader** (`index.html` lines 104-157):
+```glsl
+precision mediump float;
 
-#### **Performance Optimization**
-- **Buffer Management**: Efficient WebGL buffer creation and reuse
-- **Geometry Batching**: Single draw call for all maze walls
-- **Dynamic Updates**: Only regenerate geometry when necessary
+varying vec3 fNormal;
+varying vec3 fPosition;
+varying vec4 fColor;
 
-#### **User Experience Focus**
-- **Intuitive Controls**: Slider-based interface for easy parameter adjustment
-- **Visual Feedback**: Real-time updates and smooth transitions
-- **Responsive Design**: Automatic scaling and viewport management
+uniform vec4 ambientProduct;
+uniform vec4 diffuseProduct;
+uniform vec4 specularProduct;
+uniform float shininess;
+uniform vec4 lightPosition;
+uniform float brightness;
 
-### 🔧 Technical Implementation Details
+void main() {
+    vec3 N = normalize(fNormal);
+    vec3 L = normalize(lightPosition.xyz);  // Light direction
+    vec3 V = normalize(-fPosition);         // View direction
+    vec3 R = reflect(-L, N);                // Reflection vector
+    
+    // Phong lighting model components (Chapter 6.3)
+    vec4 ambient = ambientProduct;
+    
+    float Kd = max(dot(L, N), 0.0);
+    vec4 diffuse = Kd * diffuseProduct;
+    
+    float Ks = pow(max(dot(V, R), 0.0), shininess);
+    vec4 specular = Ks * specularProduct;
+    
+    vec4 color = fColor * (ambient + diffuse + specular);
+    gl_FragColor = vec4(color.rgb * brightness, color.a);
+}
+```
 
-#### **WebGL Pipeline Integration**
-1. **Vertex Processing**: Position, normal, and color attribute handling
-2. **Matrix Transformations**: Model-view and projection matrix calculations
-3. **Fragment Shading**: Per-pixel lighting and color computation
-4. **Depth Testing**: Z-buffer for proper 3D rendering
+### 6. **WebGL Buffer Management**
+**Textbook Reference**: Chapter 2 - Graphics Programming
+- **Implementation**: `maze.js` lines 409-427
+```javascript
+function createWallsGeometry() {
+    // Vertex data arrays
+    const vertices = [];
+    const normals = [];
+    const colors = [];
+    const indices = [];
+    
+    // ... geometry generation ...
+    
+    // Buffer creation and data upload (Chapter 2.8.1)
+    wallsBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, wallsBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(vertices), gl.STATIC_DRAW);
+    
+    wallsNormalBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, wallsNormalBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(normals), gl.STATIC_DRAW);
+    
+    wallsColorBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, wallsColorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(colors), gl.STATIC_DRAW);
+    
+    wallsIndexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, wallsIndexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+}
+```
 
-#### **Mathematical Foundations**
-- **Vector Mathematics**: 3D vector operations for geometry and lighting
-- **Matrix Operations**: Transformation matrix calculations
-- **Trigonometry**: Camera positioning and smooth transitions
-- **Graph Theory**: Maze representation and pathfinding algorithms
+### 7. **Rendering Pipeline**
+**Textbook Reference**: Chapter 12 - From Geometry to Pixels
+- **Implementation**: `maze.js` lines 609-664
+```javascript
+function render(timestamp) {
+    // Clear buffers (Chapter 12.2.4)
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    
+    updateCamera();
+    
+    // Matrix calculations (Chapter 4.11)
+    const modelViewMatrix = lookAt(eye, at, up);
+    const projectionMatrix = perspective(45, gl.canvas.width / gl.canvas.height, 0.1, 100.0);
+    
+    // Uniform matrix uploads
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, "modelViewMatrix"), 
+                       false, flatten(modelViewMatrix));
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, "projectionMatrix"), 
+                       false, flatten(projectionMatrix));
+    
+    // Normal matrix for lighting (Chapter 6.4.1)
+    const normalMatrix = [
+        vec3(modelViewMatrix[0][0], modelViewMatrix[0][1], modelViewMatrix[0][2]),
+        vec3(modelViewMatrix[1][0], modelViewMatrix[1][1], modelViewMatrix[1][2]),
+        vec3(modelViewMatrix[2][0], modelViewMatrix[2][1], modelViewMatrix[2][2])
+    ];
+    gl.uniformMatrix3fv(gl.getUniformLocation(program, "normalMatrix"), 
+                       false, flatten(normalMatrix));
+    
+    // Lighting parameters (Chapter 6.7)
+    const ambientProduct = mult(ambientColor, materialAmbient);
+    const diffuseProduct = mult(diffuseColor, materialDiffuse);
+    const specularProduct = mult(specularColor, materialSpecular);
+    
+    gl.uniform4fv(gl.getUniformLocation(program, "ambientProduct"), flatten(ambientProduct));
+    gl.uniform4fv(gl.getUniformLocation(program, "diffuseProduct"), flatten(diffuseProduct));
+    gl.uniform4fv(gl.getUniformLocation(program, "specularProduct"), flatten(specularProduct));
+    gl.uniform4fv(gl.getUniformLocation(program, "lightPosition"), flatten(lightPosition));
+    gl.uniform1f(gl.getUniformLocation(program, "shininess"), materialShininess);
+    gl.uniform1f(gl.getUniformLocation(program, "brightness"), brightness);
+    
+    drawWalls();
+    requestAnimationFrame(render);
+}
+```
 
-### 📁 File Structure
+### 8. **Event-Driven User Interface**
+**Textbook Reference**: Chapter 3 - Interaction and Animation
+- **Implementation**: `maze.js` lines 67-105
+```javascript
+// Maze size control (Chapter 3.5.5 - Sliders)
+document.getElementById("mazeSize").addEventListener("input", function(event) {
+    mazeSize = parseInt(event.target.value);
+    document.getElementById("sizeValue").textContent = mazeSize;
+    document.getElementById("sizeValueCopy").textContent = mazeSize;
+    console.log("Maze size changed to:", mazeSize + "×" + mazeSize);
+});
+
+// Camera angle control
+document.getElementById("cameraAngle").addEventListener("input", function(event) {
+    cameraAngle = event.target.value;
+    document.getElementById("angleValue").textContent = cameraAngle;
+    updateCamera();
+});
+
+// Light direction controls (Chapter 3.5.3 - Radio buttons)
+const lightDirectionRadios = document.querySelectorAll('input[name="lightDirection"]');
+lightDirectionRadios.forEach(radio => {
+    radio.addEventListener('change', function() {
+        updateLightDirection(this.value);
+    });
+});
+```
+
+## 🏗️ Advanced Technical Concepts
+
+### **Matrix Mathematics Implementation**
+**Textbook Reference**: Chapter 4.5 - Matrix and Vector Types
+- Uses `MVnew.js` library for matrix operations
+- Implements homogeneous coordinates for transformations
+- Proper matrix multiplication order for transformations
+
+### **Hidden Surface Removal**
+**Textbook Reference**: Chapter 12.6.5 - The z-Buffer Algorithm
+```javascript
+// Depth testing enabled in initialization
+gl.enable(gl.DEPTH_TEST);
+
+// Clear depth buffer each frame
+gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+```
+
+### **Vertex Attribute Management**
+**Textbook Reference**: Chapter 2.4.5 - Vertex Attributes
+```javascript
+function drawWalls() {
+    // Position attribute
+    const vPosition = gl.getAttribLocation(program, "vPosition");
+    gl.bindBuffer(gl.ARRAY_BUFFER, wallsBuffer);
+    gl.vertexAttribPointer(vPosition, 4, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(vPosition);
+    
+    // Normal attribute
+    const vNormal = gl.getAttribLocation(program, "vNormal");
+    gl.bindBuffer(gl.ARRAY_BUFFER, wallsNormalBuffer);
+    gl.vertexAttribPointer(vNormal, 4, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(vNormal);
+    
+    // Color attribute
+    const vColor = gl.getAttribLocation(program, "vColor");
+    gl.bindBuffer(gl.ARRAY_BUFFER, wallsColorBuffer);
+    gl.vertexAttribPointer(vColor, 4, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(vColor);
+    
+    // Indexed drawing
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, wallsIndexBuffer);
+    gl.drawElements(gl.TRIANGLES, wallsCount, gl.UNSIGNED_SHORT, 0);
+}
+```
+
+## 📚 Textbook Chapter Mapping
+
+| Feature | Textbook Chapter | Implementation |
+|---------|------------------|----------------|
+| WebGL Setup | Chapter 2 | `maze.js` lines 41-66 |
+| Event Handling | Chapter 3 | `maze.js` lines 67-105 |
+| 3D Geometry | Chapter 4 | `maze.js` lines 337-508 |
+| Camera System | Chapter 5 | `maze.js` lines 581-608 |
+| Lighting Model | Chapter 6 | Shaders + `maze.js` lines 555-580 |
+| Rendering Pipeline | Chapter 12 | `maze.js` lines 609-664 |
+| Procedural Generation | Chapter 10 | `maze.js` lines 138-196 |
+| Tree Traversal | Chapter 9 | `maze.js` lines 253-320 |
+
+## 🔧 Performance Optimizations
+
+### **Buffer Reuse Strategy**
+```javascript
+// Efficient buffer management
+if (wallsBuffer) {
+    gl.deleteBuffer(wallsBuffer);
+    gl.deleteBuffer(wallsNormalBuffer);
+    gl.deleteBuffer(wallsColorBuffer);
+    gl.deleteBuffer(wallsIndexBuffer);
+}
+```
+
+### **Single Draw Call Optimization**
+- All maze walls rendered in single `drawElements` call
+- Geometry batching reduces GPU state changes
+- Index buffer usage for vertex reuse
+
+### **Dynamic Scaling Algorithm**
+```javascript
+// Camera distance scales with maze size
+const distance = baseDistance + (mazeSize - 10) * 0.2;
+```
+
+## 📁 File Architecture
 
 ```
-├── index.html          # HTML structure, shaders, and UI controls
-├── maze.js            # Core application logic and WebGL implementation
-├── initShaders.js     # Shader compilation utilities
+├── index.html          # HTML structure, vertex/fragment shaders, UI controls
+├── maze.js            # Core application logic, WebGL implementation, algorithms
+├── initShaders.js     # Shader compilation and linking utilities
 ├── MVnew.js          # Matrix and vector mathematics library
-└── README.md         # This documentation
+└── README.md         # This comprehensive documentation
 ```
 
-### 🚀 Usage Instructions
+## 🚀 Usage & Controls
 
-1. **Adjust Maze Size**: Use the size slider to set maze dimensions (5×5 to 25×25)
-2. **Generate New Maze**: Click "Regenerate Maze" to create a new layout
-3. **Control Camera**: Adjust the camera angle slider for different viewing perspectives
-4. **Modify Lighting**: Change brightness and light direction for optimal visualization
-5. **Explore**: Use the smooth camera controls to examine the maze structure
+1. **Maze Size Adjustment**: 5×5 to 25×25 grid dimensions
+2. **Camera Control**: 0° (near top-down) to 90° (side view)
+3. **Lighting Control**: Brightness and directional lighting
+4. **Maze Regeneration**: Create new random layouts
+5. **Real-time Interaction**: All controls update immediately
 
----
+## 🛠️ Development Insights
 
-## 日本語版
+### **Algorithm Complexity**
+- **Maze Generation**: O(n²) time, O(n²) space
+- **Pathfinding**: O(n²) time, O(n²) space
+- **Rendering**: O(walls) per frame
 
-### 🎯 機能概要
+### **Memory Management**
+- Dynamic buffer allocation/deallocation
+- Efficient vertex data packing
+- Minimal GPU memory usage
 
-#### 1. **動的迷路生成**
-- **実装場所**: `maze.js` 138-196行
-- **アルゴリズム**: ランダム化深度優先探索（DFS）
-- **ロジック**:
-  - すべての壁が intact な状態でグリッドを初期化
-  - スタックベースのDFSを使用して迷路に経路を彫る
-  - 迷路の性質を維持しながらすべてのセルが到達可能であることを保証
-  - 入口（左上）と出口（右下）の開口部を作成
-
-#### 2. **経路探索システム**
-- **実装場所**: `maze.js` 253-320行
-- **アルゴリズム**: 幅優先探索（BFS）
-- **ロジック**:
-  - 入口から出口への最短経路を発見
-  - 最適経路発見のためのキューベースBFS使用
-  - 親追跡を使用した経路再構築
-  - BFSの性質により最短解を保証
-
-#### 3. **3D可視化エンジン**
-- **実装場所**: `maze.js` 337-508行
-- **コンポーネント**:
-  - **壁生成** (428-508行): 適切な法線を持つ3D壁セグメントの作成
-  - **床生成** (509-554行): 適切なテクスチャリングでの迷路床の描画
-  - **ジオメトリ管理**: 動的頂点バッファの作成と管理
-
-#### 4. **インタラクティブカメラシステム**
-- **実装場所**: `maze.js` 581-608行
-- **機能**:
-  - **滑らかな高度制御**: トップダウンからサイドビューへの自然な遷移
-  - **自動距離スケーリング**: 迷路サイズに基づくカメラ距離調整
-  - **ひねりのない移動**: 一貫したupベクトルで方向感覚の混乱を防止
-- **ロジック**:
-  - 滑らかなカメラ配置のための三角関数使用
-  - 0°での迷路可視性確保のための最小角度オフセット実装
-  - 迷路寸法に比例した視距離スケーリング
-
-#### 5. **高度照明システム**
-- **実装場所**: 
-  - **設定**: `maze.js` 555-580行
-  - **シェーダー**: `index.html` 78-157行
-- **機能**:
-  - **Phong照明モデル**: 環境光、拡散光、鏡面光成分
-  - **複数光方向**: 上、右上、左上の配置
-  - **動的明度制御**: リアルタイム照明強度調整
-- **ロジック**:
-  - フラグメントシェーダーでのフラグメント毎照明計算
-  - 正確な照明のための法線ベクトル変換
-  - リアルな表面外観のための材質プロパティ統合
-
-#### 6. **ユーザーインターフェース制御**
-- **実装場所**: `index.html` 58-82行, `maze.js` 67-105行
-- **コンポーネント**:
-  - **迷路サイズスライダー** (5×5から25×25): 動的迷路寸法制御
-  - **カメラ角度スライダー** (0°から90°): 滑らかな視角調整
-  - **明度制御** (0.1から2.0): 照明強度変更
-  - **光方向ラジオボタン**: 指向性照明選択
-  - **再生成ボタン**: 新迷路生成トリガー
-
-#### 7. **動的迷路サイジング**
-- **実装場所**: `maze.js` 73-80行, 587行
-- **ロジック**:
-  - 再生成なしでのリアルタイム迷路サイズ調整
-  - 最適表示のための自動カメラ距離スケーリング
-  - 新寸法での効率的ジオメトリ再作成
-  - 全サイズでのアスペクト比と視覚品質維持
-
-### 🏗️ アーキテクチャ & 設計思想
-
-#### **モジュラー設計パターン**
-- **関心の分離**: 描画、ロジック、UIの明確な区別
-- **関数ベースアーキテクチャ**: 各主要機能を専用関数でカプセル化
-- **状態管理**: 共有状態用グローバル変数と操作用ローカルスコープ
-
-#### **パフォーマンス最適化**
-- **バッファ管理**: 効率的なWebGLバッファ作成と再利用
-- **ジオメトリバッチング**: 全迷路壁の単一描画呼び出し
-- **動的更新**: 必要時のみジオメトリ再生成
-
-#### **ユーザーエクスペリエンス重視**
-- **直感的制御**: パラメータ調整の簡単なスライダーベースインターフェース
-- **視覚的フィードバック**: リアルタイム更新と滑らかな遷移
-- **レスポンシブデザイン**: 自動スケーリングとビューポート管理
-
-### 🔧 技術実装詳細
-
-#### **WebGLパイプライン統合**
-1. **頂点処理**: 位置、法線、色属性の処理
-2. **行列変換**: モデルビューと投影行列の計算
-3. **フラグメントシェーディング**: ピクセル毎照明と色計算
-4. **深度テスト**: 適切な3D描画のためのZバッファ
-
-#### **数学的基礎**
-- **ベクトル数学**: ジオメトリと照明のための3Dベクトル演算
-- **行列演算**: 変換行列計算
-- **三角法**: カメラ配置と滑らかな遷移
-- **グラフ理論**: 迷路表現と経路探索アルゴリズム
-
-### 📁 ファイル構造
-
-```
-├── index.html          # HTML構造、シェーダー、UI制御
-├── maze.js            # コアアプリケーションロジックとWebGL実装
-├── initShaders.js     # シェーダーコンパイルユーティリティ
-├── MVnew.js          # 行列とベクトル数学ライブラリ
-└── README.md         # このドキュメント
-```
-
-### 🚀 使用方法
-
-1. **迷路サイズ調整**: サイズスライダーで迷路寸法設定（5×5から25×25）
-2. **新迷路生成**: 「Regenerate Maze」クリックで新レイアウト作成
-3. **カメラ制御**: カメラ角度スライダーで異なる視点調整
-4. **照明変更**: 最適可視化のための明度と光方向変更
-5. **探索**: 滑らかなカメラ制御で迷路構造検査
-
----
-
-### 🛠️ Development Notes
-
-**Performance Considerations:**
-- Efficient buffer management for large mazes
-- Single draw call optimization for wall rendering
-- Dynamic geometry generation only when necessary
-
-**Browser Compatibility:**
-- Modern browsers with WebGL support
-- Responsive design for various screen sizes
-- Cross-platform compatibility
-
-**Future Enhancements:**
-- Multiple maze generation algorithms
-- Advanced pathfinding visualizations
-- Texture mapping for enhanced visuals
-- VR/AR support integration 
+### **Cross-Platform Compatibility**
+- WebGL 1.0 compatibility
+- Responsive design principles
+- Modern browser support 
