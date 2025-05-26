@@ -12,7 +12,7 @@
 let gl;                       // WebGL context
 let program;                  // Shader program
 let maze = [];                // Maze grid
-const mazeSize = 10;          // Size of the maze (NxN)
+let mazeSize = 10;            // Size of the maze (NxN) - now dynamic
 const cellSize = 0.15;        // Size of each cell
 const wallHeight = 0.1;       // Height of the walls
 const wallThickness = 0.02;   // Thickness of the walls
@@ -78,6 +78,14 @@ window.onload = function init() {
         cameraAngle = event.target.value;
         document.getElementById("angleValue").textContent = cameraAngle;
         updateCamera();
+    });
+    
+    // Set up maze size control
+    document.getElementById("mazeSize").addEventListener("input", function(event) {
+        mazeSize = parseInt(event.target.value);
+        document.getElementById("sizeValue").textContent = mazeSize;
+        document.getElementById("sizeValueCopy").textContent = mazeSize;
+        console.log("Maze size changed to:", mazeSize + "×" + mazeSize);
     });
     
     // Set up brightness control
@@ -583,9 +591,11 @@ function updateCamera() {
     const rad = cameraAngle * Math.PI / 180.0;
     
     // Calculate camera position with elevation change
-    // At 0°: camera is slightly angled above (0.2, 3, 0) to see walls
-    // At 90°: camera is at side level (3, 0, 0)
-    const distance = 3.0; // Distance from maze center
+    // At 0°: camera is slightly angled above to see walls
+    // At 90°: camera is at side level
+    // Distance scales with maze size to keep entire maze visible
+    const baseDistance = 3.0;
+    const distance = baseDistance + (mazeSize - 10) * 0.2; // Scale distance with maze size
     
     // Add a small offset at 0° to ensure walls are visible
     const minAngleOffset = 0.1; // Minimum angle to see walls (about 6 degrees)
