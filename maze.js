@@ -26,8 +26,9 @@ let eye = vec3(0, 2, 0);      // Camera position
 let at = vec3(0, 0, 0);       // Look-at point
 let up = vec3(0, 0, -1);      // Up vector
 
-// Lighting parameters
-let lightPosition = vec4(0.0, 2.0, 0.0, 0.0);  // Directional light, default from top
+// Lighting parameters - fixed Top Right lighting
+const topRightDir = normalize(vec3(1.0, -1.0, 1.0));
+let lightPosition = vec4(topRightDir[0], topRightDir[1], topRightDir[2], 0.0);
 const ambientColor = vec4(0.2, 0.2, 0.2, 1.0);
 const diffuseColor = vec4(0.8, 0.8, 0.8, 1.0);
 const specularColor = vec4(1.0, 1.0, 1.0, 1.0);
@@ -37,7 +38,7 @@ const materialSpecular = vec4(1.0, 1.0, 1.0, 1.0);
 const materialShininess = 100.0;
 
 // Visual control variables
-let brightness = 1.0;         // Brightness control value
+let brightness = 1.0;          // Brightness control value
 
 // Buffer objects
 let wallsBuffer;
@@ -94,16 +95,7 @@ window.onload = function init() {
         document.getElementById("brightnessValue").textContent = parseFloat(brightness).toFixed(1);
     });
     
-    // Set up light direction controls
-    const lightDirectionRadios = document.querySelectorAll('input[name="lightDirection"]');
-    lightDirectionRadios.forEach(radio => {
-        radio.addEventListener('change', function() {
-            updateLightDirection(this.value);
-        });
-    });
-    
-    // Initial light direction setup
-    updateLightDirection('top');
+
     
     // Set up regenerate maze button
     document.getElementById("regenerate").addEventListener("click", regenerateMaze);
@@ -257,7 +249,7 @@ function removeWallBetween(a, b) {
     }
 }
 
-// Solve the maze using BFS to find the shortest path
+// Solve the maze using BFS to find the shortest path, We will use this to find the path for the ball later
 function solveMaze() {
     // Queue for BFS
     const queue = [];
@@ -556,34 +548,7 @@ function createFloor(vertices, normals, colors, indices, x, y, z, width, height,
     );
 }
 
-/**
- * Update the light direction based on the selected option
- * @param {String} direction - Direction option ('top', 'topRight', or 'topLeft')
- */
-function updateLightDirection(direction) {
-    console.log("Updating light direction to:", direction);
-    
-    // Reset light position based on selected direction
-    switch(direction) {
-        case 'top':
-            // Light directly from above (reversed Y direction)
-            lightPosition = vec4(0.0, -2.0, 0.0, 0.0);
-            break;
-        case 'topRight':
-            // Light from top-right (reversed Y d2irection)
-            lightPosition = vec4(1.5, -2.0, 1.5, 0.0);
-            break;
-        case 'topLeft':
-            // Light from top-left (reversed Y direction)
-            lightPosition = vec4(-1.5, -2.0, 1.5, 0.0);
-            break;
-        default:
-            // Default to top if unknown value (reversed Y direction)
-            lightPosition = vec4(0.0, -2.0, 0.0, 0.0);
-    }
-    
-    // No need to call render explicitly as it will update on the next animation frame
-}
+
 
 // Update the camera position based on the camera angle
 function updateCamera() {
