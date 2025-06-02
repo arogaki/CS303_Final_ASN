@@ -3,8 +3,8 @@
  * 
  * Team Members:
  * - Aran: Maze Architecture & Rendering Systems
- * - Shuja: Player Systems & Game Mechanics  
- * - Nairran: AI Systems & Visual Effects
+ * - Shuja: AI Systems & Visual Effects  
+ * - Nairran: Player Systems & Game Mechanics
  * 
  * Features:
  * 1. Player navigation with sphere
@@ -26,7 +26,7 @@ const cellSize = 0.15;
 const wallHeight = 0.1;
 const wallThickness = 0.02;
 
-// Shuja - Game State Management
+// Nairran - Game State Management
 let gameState = {
     isPlaying: false,
     score: 0,
@@ -106,7 +106,7 @@ let overheadViewSystem = {
     originalCameraAngle: 90 // Store the original angle when activated
 };
 
-// Nairran - Ghost AI Systems
+// Shuja - Ghost AI Systems
 let ghosts = [];
 const ghostRadius = 0.04;
 
@@ -216,7 +216,7 @@ window.onload = function init() {
     render();
 };
 
-// Shuja - UI Controls and Game State Management
+// Nairran - UI Controls and Game State Management
 // Set up UI control event listeners
 function setupUIControls() {
     // Maze type selection
@@ -1825,7 +1825,7 @@ function drawWalls() {
     gl.drawElements(gl.TRIANGLES, wallsCount, gl.UNSIGNED_SHORT, 0);
 } 
 
-// Shuja - Player Movement and Controls
+// Nairran - Player Movement and Controls
 // Player movement and game logic
 function updatePlayerWorldPosition() {
     const offsetX = -((mazeSize * cellSize) / 2);
@@ -2074,7 +2074,7 @@ function updatePlayerAnimation() {
     }
 }
 
-// Shuja - Pellet Collection System
+// Nairran - Pellet Collection System
 // Pellet system
 function generatePellets() {
     pellets = [];
@@ -2144,7 +2144,7 @@ function checkPelletCollection() {
     }
 }
 
-// Nairran - Ghost AI and Pathfinding
+// Shuja - Ghost AI and Pathfinding
 // Ghost system
 function generateGhosts() {
     ghosts = [];
@@ -2315,7 +2315,7 @@ function updateGhostRespawn(ghost) {
     }
 }
 
-// Nairran - AI Pathfinding Algorithms
+// Shuja - AI Pathfinding Algorithms
 // A* Pathfinding Algorithm for Ghost AI
 function aStarPathfinding(startX, startY, goalX, goalY) {
     // Add debug logging for pathfinding attempts
@@ -2942,7 +2942,7 @@ function isGhostSpawnArea(x, y) {
     return false; // For now, allow ghosts anywhere except player start
 }
 
-// Nairran - Power-up Systems
+// Shuja - Power-up Systems
 // Power-up system
 function activateDash() {
     dashSystem.active = true;
@@ -3483,7 +3483,7 @@ function activatePowerMode() {
 
 }
 
-// Nairran - Particle Effects System
+// Shuja - Particle Effects System
 // Particle System for visual effects
 let particles = [];
 const maxParticles = 200;
