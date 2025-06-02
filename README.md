@@ -188,7 +188,7 @@ Choose from three distinct maze generation algorithms:
 ## 🏁 Winning & Losing
 
 ### Victory Conditions
-- Collect all regular pellets in the maze
+- Collect all pellets in the maze
 - Achieve the highest score possible
 - Survive with remaining lives for bonus satisfaction
 
