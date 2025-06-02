@@ -1,6 +1,11 @@
 /**
  * WebGL 3D Maze Game
  * 
+ * Team Members:
+ * - Aran: Maze Architecture & Rendering Systems
+ * - Shuja: Player Systems & Game Mechanics  
+ * - Nairran: AI Systems & Visual Effects
+ * 
  * Features:
  * 1. Player navigation with sphere
  * 2. Pellet collection system
@@ -9,11 +14,11 @@
  * 5. Power-up system-overhead view, power pellets, ghost mode
  */
 
-// Global WebGL variables
+// Aran - WebGL Core Systems and Global Variables
 let gl;
 let program;
 
-// Maze configuration
+// Aran - Maze Configuration and Architecture
 let maze = [];
 let mazeSize = 10;
 let mazeType = 'perfect'; // 'perfect', 'imperfect', 'pacman'
@@ -21,7 +26,7 @@ const cellSize = 0.15;
 const wallHeight = 0.1;
 const wallThickness = 0.02;
 
-// Game state
+// Shuja - Game State Management
 let gameState = {
     isPlaying: false,
     score: 0,
@@ -30,7 +35,12 @@ let gameState = {
     totalPellets: 0,
     powerPelletsCollected: 0,
     totalPowerPellets: 0,
-    gameStatus: 'Ready'
+    gameStatus: 'Ready',
+    playerRespawning: false, // Track when player is respawning after death
+    respawnProtectionTime: 0, // Time left for respawn protection
+    lastPelletCollectionTime: 0, // Timestamp of last pellet collection
+    brightnessDecayActive: false, // Flag to track if brightness is decaying
+    waitingForRespawn: false // Track when player is waiting for manual respawn (Q key)
 };
 
 // Player system
@@ -55,7 +65,9 @@ let keys = {
     s: false,
     d: false,
     space: false,
-    r: false
+    r: false,
+    v: false,  // Added key for overhead view powerup
+    q: false   // Added key for manual respawn
 };
 
 // Pellets system
@@ -79,15 +91,24 @@ let dashSystem = {
     active: false,
     duration: 3000, // 3 seconds
     timeLeft: 0,
-    cooldown: 20000, // 20 seconds
+    cooldown: 12000, // 12 seconds (reduced from 20)
     cooldownTimeLeft: 0,
     speedMultiplier: 1.5
 };
 
-// Ghost system
+// Overhead View System (separate powerup from dash and power pellets)
+let overheadViewSystem = {
+    active: false,
+    duration: 7000, // 7 seconds (5-10 seconds range)
+    timeLeft: 0,
+    cooldown: 20000, // 20 seconds cooldown (reduced from 30)
+    cooldownTimeLeft: 0,
+    originalCameraAngle: 90 // Store the original angle when activated
+};
+
+// Nairran - Ghost AI Systems
 let ghosts = [];
 const ghostRadius = 0.04;
-const ghostSpeed = 3.2; // Increased from 2.4 to make game more challenging
 
 // Ghost states for power pellet system
 const GHOST_STATES = {
@@ -99,22 +120,15 @@ const GHOST_STATES = {
 };
 
 const GHOST_SPEEDS = {
-    NORMAL: 2.8,     // Increased from 1.8
-    FRIGHTENED: 1.8, // Increased from 1.2 but still slower when frightened
-    EATEN: 4.0,      // Increased from 3.0 for faster return
-    RETURNING: 4.0,  // Increased from 3.0
+    NORMAL: 2.0,     // Player speed (2.5) * 0.8 = 2.0
+    FRIGHTENED: 1.6, // Slower when frightened (player speed * 0.64)
+    EATEN: 3.0,      // Fast return speed (reduced from 3.6)
+    RETURNING: 3.0,  // Fast return speed (reduced from 3.6)
     RESPAWNING: 0.0  // No movement while respawning
 };
 
-// Power-up system (no longer used - dash system replaced overhead view)
-// let powerUps = {
-//     overheadView: {
-//         active: false,
-//         duration: 5000, // 5 seconds
-//         timeLeft: 0
-//     }
-// };
 
+// Aran - Camera and Rendering Systems
 // Camera and view variables
 let cameraAngle = 90;
 let originalCameraAngle = 90;
@@ -158,6 +172,7 @@ let deltaTime = 0;
 // Ghost respawn system
 const GHOST_RESPAWN_TIME = 15000; // 15 seconds in milliseconds
 
+// Aran - WebGL Initialization and Main Loop
 // Initialize WebGL and game systems
 window.onload = function init() {
     const canvas = document.getElementById("gl-canvas");
@@ -201,6 +216,7 @@ window.onload = function init() {
     render();
 };
 
+// Shuja - UI Controls and Game State Management
 // Set up UI control event listeners
 function setupUIControls() {
     // Maze type selection
@@ -214,7 +230,7 @@ function setupUIControls() {
     // Camera angle control
     document.getElementById("cameraAngle").addEventListener("input", function(event) {
         cameraAngle = event.target.value;
-        originalCameraAngle = cameraAngle;
+            originalCameraAngle = cameraAngle;
         document.getElementById("angleValue").textContent = cameraAngle;
     });
     
@@ -283,6 +299,32 @@ function startGame() {
     gameState.pelletsCollected = 0;
     gameState.powerPelletsCollected = 0;
     gameState.gameStatus = 'Playing';
+    gameState.playerRespawning = false; // Reset respawn state
+    gameState.respawnProtectionTime = 0; // Reset protection timer
+    gameState.lastPelletCollectionTime = Date.now(); // Initialize pellet collection timer
+    gameState.brightnessDecayActive = false; // Reset brightness decay
+    gameState.waitingForRespawn = false; // Reset manual respawn state
+    
+    // Set camera angle based on maze type
+    let targetAngle = 50; // Default for perfect maze
+    if (mazeType === 'imperfect') {
+        targetAngle = 50;
+    } else if (mazeType === 'pacman') {
+        targetAngle = 65;
+    }
+    
+    // Force camera angle and brightness to 2.0
+    cameraAngle = targetAngle;
+    originalCameraAngle = targetAngle;
+    brightness = 2.0;
+    
+    // Update UI elements to reflect forced settings
+    document.getElementById("cameraAngle").value = cameraAngle;
+    document.getElementById("angleValue").textContent = cameraAngle;
+    document.getElementById("brightness").value = brightness;
+    document.getElementById("brightnessValue").textContent = parseFloat(brightness).toFixed(1);
+    
+
     
     // Reset power mode
     powerMode.active = false;
@@ -296,13 +338,18 @@ function startGame() {
     dashSystem.cooldownTimeLeft = 0;
     player.speed = player.baseSpeed;
     
+    // Reset overhead view system
+    overheadViewSystem.active = false;
+    overheadViewSystem.timeLeft = 0;
+    overheadViewSystem.cooldownTimeLeft = 0;
+    
     // Reset player position
     player.x = 0;
     player.y = 0;
     
     // Validate starting position and fix if necessary
     if (!isValidPlayerPosition(player.x, player.y)) {
-        console.warn("Starting position is invalid, finding safe starting position...");
+
         // Try to find a valid starting position near (0,0)
         let foundValidStart = false;
         for (let radius = 0; radius < 5 && !foundValidStart; radius++) {
@@ -315,14 +362,14 @@ function startGame() {
                         player.x = testX;
                         player.y = testY;
                         foundValidStart = true;
-                        console.log(`Found valid starting position: (${testX}, ${testY})`);
+
                     }
                 }
             }
         }
         
         if (!foundValidStart) {
-            console.error("Could not find valid starting position! Using (0,0) anyway.");
+
         }
     }
     
@@ -338,7 +385,7 @@ function startGame() {
     generateGhosts();
     
     // Test particle effect to verify system is working
-    console.log("Creating test particle effect at player position");
+
     createParticleEffect(
         PARTICLE_TYPES.POWER_MODE_START,
         player.worldX,
@@ -363,6 +410,11 @@ function resetGame() {
     gameState.powerPelletsCollected = 0;
     gameState.totalPowerPellets = 0;
     gameState.gameStatus = 'Ready';
+    gameState.playerRespawning = false; // Reset respawn state
+    gameState.respawnProtectionTime = 0; // Reset protection timer
+    gameState.lastPelletCollectionTime = 0; // Reset pellet collection timer
+    gameState.brightnessDecayActive = false; // Reset brightness decay
+    gameState.waitingForRespawn = false; // Reset manual respawn state
     
     // Reset power mode
     powerMode.active = false;
@@ -375,6 +427,11 @@ function resetGame() {
     dashSystem.timeLeft = 0;
     dashSystem.cooldownTimeLeft = 0;
     player.speed = player.baseSpeed;
+    
+    // Reset overhead view system
+    overheadViewSystem.active = false;
+    overheadViewSystem.timeLeft = 0;
+    overheadViewSystem.cooldownTimeLeft = 0;
     
     // Clear game objects
     pellets = [];
@@ -440,6 +497,19 @@ function updateUI() {
         }
     }
     
+    // Show respawn protection status
+    if (gameState.playerRespawning && gameState.respawnProtectionTime > 0) {
+        const secondsLeft = Math.ceil(gameState.respawnProtectionTime / 1000);
+        document.getElementById("gameStatus").textContent = `Respawn Protection: ${secondsLeft}s`;
+
+    }
+    
+    // Show manual respawn waiting status
+    if (gameState.waitingForRespawn) {
+        document.getElementById("gameStatus").textContent = `Press Q to Respawn`;
+
+    }
+    
     // Show power mode status
     if (powerMode.active) {
         const secondsLeft = Math.ceil(powerMode.timeLeft / 1000);
@@ -478,14 +548,48 @@ function updateUI() {
             document.getElementById("gameStatus").textContent = `Grace Period: ${secondsLeft}s`;
         }
     }
+    
+    // Show overhead view status
+    if (overheadViewSystem.active) {
+        const secondsLeft = Math.ceil(overheadViewSystem.timeLeft / 1000);
+        document.getElementById("overheadViewStatus").textContent = `Overhead View: ${secondsLeft}s`;
+        document.getElementById("overheadViewStatus").style.display = 'block';
+    } else if (overheadViewSystem.cooldownTimeLeft > 0) {
+        const secondsLeft = Math.ceil(overheadViewSystem.cooldownTimeLeft / 1000);
+        document.getElementById("overheadViewStatus").textContent = `Overhead Cooldown: ${secondsLeft}s`;
+        document.getElementById("overheadViewStatus").style.display = 'block';
+    } else {
+        document.getElementById("overheadViewStatus").textContent = `Overhead View: Ready`;
+        document.getElementById("overheadViewStatus").style.display = 'block';
+    }
 }
 
+// Aran - Maze Generation Algorithms
 // Regenerate the maze
 function regenerateMaze() {
-    console.log("Regenerating maze with type:", mazeType);
+
     
     // Generate new maze based on selected type
     generateMaze();
+    
+    // Update camera angle based on maze type (only when not playing)
+    if (!gameState.isPlaying) {
+        let targetAngle = 50; // Default for perfect maze
+        if (mazeType === 'imperfect') {
+            targetAngle = 50;
+        } else if (mazeType === 'pacman') {
+            targetAngle = 65;
+        }
+        
+        cameraAngle = targetAngle;
+        originalCameraAngle = targetAngle;
+        
+        // Update UI elements to reflect camera angle change
+        document.getElementById("cameraAngle").value = cameraAngle;
+        document.getElementById("angleValue").textContent = cameraAngle;
+        
+
+    }
     
     // If game is running, regenerate game objects
     if (gameState.isPlaying) {
@@ -567,9 +671,11 @@ function generatePerfectMaze() {
 
 // Create imperfect maze by removing random walls
 function createImperfectMaze() {
-    const wallsToRemove = Math.floor(mazeSize * mazeSize * 0.1); // Remove 10% of walls
+    // Significantly increase wall removal from 10% to 25% for more open maze
+    const baseWallsToRemove = Math.floor(mazeSize * mazeSize * 0.25);
     
-    for (let i = 0; i < wallsToRemove; i++) {
+    // First pass: Random wall removal for general connectivity
+    for (let i = 0; i < baseWallsToRemove; i++) {
         const x = Math.floor(Math.random() * mazeSize);
         const y = Math.floor(Math.random() * mazeSize);
         const wall = Math.floor(Math.random() * 4);
@@ -577,6 +683,96 @@ function createImperfectMaze() {
         // Remove wall if it exists and doesn't break maze boundaries
         if (canRemoveWall(x, y, wall)) {
             removeWallAtPosition(x, y, wall);
+        }
+    }
+    
+    // Second pass: Strategic loop creation to reduce dead ends
+    createStrategicLoops();
+    
+    // Third pass: Connect isolated areas to prevent getting stuck
+    ensureConnectivity();
+}
+
+// Create strategic loops to reduce dead ends and linear paths
+function createStrategicLoops() {
+    const loopsToCreate = Math.max(3, Math.floor(mazeSize / 3));
+    
+    for (let i = 0; i < loopsToCreate; i++) {
+        // Try to create loops in different areas of the maze
+        const areaX = Math.floor(Math.random() * (mazeSize - 4)) + 2;
+        const areaY = Math.floor(Math.random() * (mazeSize - 4)) + 2;
+        
+        // Create a 2x2 or 3x3 loop area
+        const loopSize = Math.random() < 0.5 ? 2 : 3;
+        
+        for (let dy = 0; dy < loopSize; dy++) {
+            for (let dx = 0; dx < loopSize; dx++) {
+                const x = Math.min(areaX + dx, mazeSize - 1);
+                const y = Math.min(areaY + dy, mazeSize - 1);
+                
+                // Remove walls to create open areas (but not all walls)
+                if (Math.random() < 0.7) { // 70% chance to remove each wall
+                    // Remove right wall if not at boundary
+                    if (x < mazeSize - 1 && canRemoveWall(x, y, 1)) {
+                        removeWallAtPosition(x, y, 1);
+                    }
+                    // Remove bottom wall if not at boundary  
+                    if (y < mazeSize - 1 && canRemoveWall(x, y, 2)) {
+                        removeWallAtPosition(x, y, 2);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Ensure connectivity by creating additional passages between sections
+function ensureConnectivity() {
+    // Create horizontal passages at regular intervals
+    const horizontalPassages = Math.max(2, Math.floor(mazeSize / 4));
+    for (let i = 0; i < horizontalPassages; i++) {
+        const y = Math.floor((i + 1) * mazeSize / (horizontalPassages + 1));
+        
+        // Create passage across the maze
+        for (let x = 1; x < mazeSize - 1; x += 2) {
+            if (canRemoveWall(x, y, 1)) {
+                removeWallAtPosition(x, y, 1);
+            }
+        }
+    }
+    
+    // Create vertical passages at regular intervals
+    const verticalPassages = Math.max(2, Math.floor(mazeSize / 4));
+    for (let i = 0; i < verticalPassages; i++) {
+        const x = Math.floor((i + 1) * mazeSize / (verticalPassages + 1));
+        
+        // Create passage across the maze
+        for (let y = 1; y < mazeSize - 1; y += 2) {
+            if (canRemoveWall(x, y, 2)) {
+                removeWallAtPosition(x, y, 2);
+            }
+        }
+    }
+    
+    // Add diagonal connections to create more complex routing options
+    const diagonalConnections = Math.max(3, Math.floor(mazeSize / 3));
+    for (let i = 0; i < diagonalConnections; i++) {
+        const startX = Math.floor(Math.random() * (mazeSize - 3)) + 1;
+        const startY = Math.floor(Math.random() * (mazeSize - 3)) + 1;
+        
+        // Create short diagonal passages
+        for (let step = 0; step < 3 && startX + step < mazeSize - 1 && startY + step < mazeSize - 1; step++) {
+            const x = startX + step;
+            const y = startY + step;
+            
+            if (Math.random() < 0.8) { // 80% chance for each step
+                // Alternate between right and down movements
+                if (step % 2 === 0 && canRemoveWall(x, y, 1)) {
+                    removeWallAtPosition(x, y, 1);
+                } else if (canRemoveWall(x, y, 2)) {
+                    removeWallAtPosition(x, y, 2);
+                }
+            }
         }
     }
 }
@@ -725,7 +921,7 @@ function createStrategicBarriers() {
     }
     
     // Add a few scattered single blocks for variety, but sparingly
-    if (mazeSize >= 12) {
+        if (mazeSize >= 12) {
         const numRandomBlocks = Math.max(2, Math.floor(mazeSize / 8));
         for (let i = 0; i < numRandomBlocks; i++) {
             const randomX = 3 + Math.floor(Math.random() * (mazeSize - 6));
@@ -922,9 +1118,10 @@ function removeWallBetween(a, b) {
     }
 }
 
+// Aran - Geometry and Rendering Functions
 // Create all geometry for the game
 function createGeometry() {
-    console.log("Creating geometry for all game objects");
+
     
     // Clear existing buffers
     clearBuffers();
@@ -1628,6 +1825,7 @@ function drawWalls() {
     gl.drawElements(gl.TRIANGLES, wallsCount, gl.UNSIGNED_SHORT, 0);
 } 
 
+// Shuja - Player Movement and Controls
 // Player movement and game logic
 function updatePlayerWorldPosition() {
     const offsetX = -((mazeSize * cellSize) / 2);
@@ -1638,6 +1836,21 @@ function updatePlayerWorldPosition() {
 
 function handlePlayerInput() {
     if (!gameState.isPlaying) return;
+    
+    // Handle manual respawn (Q key) - only works when waiting for respawn
+    if (keys.q && gameState.waitingForRespawn) {
+        const respawnSuccess = activateManualRespawn();
+        if (respawnSuccess) {
+            keys.q = false; // Prevent continuous activation
+        }
+        return; // Skip movement processing when handling respawn
+    }
+    
+    // Prevent all movement if player is waiting for respawn (must press Q first)
+    if (gameState.waitingForRespawn) {
+
+        return;
+    }
     
     // Allow input even during movement for more responsive controls
     let newX = player.x;
@@ -1686,7 +1899,7 @@ function handlePlayerInput() {
     if (!player.moving && (keys.w || keys.a || keys.s || keys.d)) {
         const hasValidMoves = checkPlayerHasValidMoves(newX, newY);
         if (!hasValidMoves) {
-            console.warn("Player appears to be stuck with no valid moves!");
+
             emergencyPlayerRescue();
             return;
         }
@@ -1704,6 +1917,12 @@ function handlePlayerInput() {
         document.getElementById("cameraAngle").value = cameraAngle;
         document.getElementById("angleValue").textContent = cameraAngle;
         keys.r = false;
+    }
+    
+    // Handle overhead view activation (V key)
+    if (keys.v && !overheadViewSystem.active && overheadViewSystem.cooldownTimeLeft <= 0) {
+        activateOverheadView();
+        keys.v = false; // Prevent continuous activation
     }
     
     // Only start new movement if not currently moving and position actually changed
@@ -1741,7 +1960,7 @@ function checkPlayerHasValidMoves(x, y) {
 function movePlayer(newX, newY) {
     // Safety check: ensure the target position is valid before starting movement
     if (!isValidPlayerPosition(newX, newY)) {
-        console.warn(`Invalid player position attempted: (${newX}, ${newY}). Movement cancelled.`);
+
         return;
     }
     
@@ -1772,7 +1991,7 @@ function isValidPlayerPosition(x, y) {
 
 // Emergency function to move player to a safe position if they get stuck
 function emergencyPlayerRescue() {
-    console.log("Emergency player rescue activated!");
+
     
     // Try to find a nearby safe position
     const searchRadius = 3;
@@ -1784,7 +2003,7 @@ function emergencyPlayerRescue() {
                     const testY = player.y + dy;
                     
                     if (isValidPlayerPosition(testX, testY)) {
-                        console.log(`Moving player to safe position: (${testX}, ${testY})`);
+
                         player.x = testX;
                         player.y = testY;
                         player.moving = false;
@@ -1799,7 +2018,7 @@ function emergencyPlayerRescue() {
     }
     
     // If no nearby safe position found, move to starting position
-    console.log("No nearby safe position found, moving to start");
+
     player.x = 0;
     player.y = 0;
     player.moving = false;
@@ -1823,7 +2042,7 @@ function updatePlayerAnimation() {
         
         // Safety check: verify the player ended up in a valid position
         if (!isValidPlayerPosition(player.x, player.y)) {
-            console.warn(`Player ended up in invalid position: (${player.x}, ${player.y})`);
+
             emergencyPlayerRescue();
             return;
         }
@@ -1855,6 +2074,7 @@ function updatePlayerAnimation() {
     }
 }
 
+// Shuja - Pellet Collection System
 // Pellet system
 function generatePellets() {
     pellets = [];
@@ -1898,6 +2118,15 @@ function checkPelletCollection() {
             gameState.pelletsCollected++;
             gameState.score += 10;
             
+            // Reset pellet collection timer and brightness decay
+            gameState.lastPelletCollectionTime = Date.now();
+            gameState.brightnessDecayActive = false;
+            
+            // Reset brightness to 2.0 when pellet is collected
+            brightness = 2.0;
+            document.getElementById("brightness").value = brightness;
+            document.getElementById("brightnessValue").textContent = parseFloat(brightness).toFixed(1);
+            
             // Create particle effect for pellet collection
             createParticleEffect(
                 PARTICLE_TYPES.PELLET_COLLECT,
@@ -1915,6 +2144,7 @@ function checkPelletCollection() {
     }
 }
 
+// Nairran - Ghost AI and Pathfinding
 // Ghost system
 function generateGhosts() {
     ghosts = [];
@@ -1959,8 +2189,8 @@ function generateGhosts() {
                 
                 // Validate corner positions too
                 if (!hasWallBlock(spawnY, spawnX) && isValidPlayerPosition(spawnX, spawnY)) {
-                    break;
-                }
+                break;
+            }
             }
         } while ((distanceFromPlayer < minDistanceFromPlayer || 
                  hasWallBlock(spawnY, spawnX) || 
@@ -1969,7 +2199,7 @@ function generateGhosts() {
         
         // Final safety check - if still in wall block, find any valid position
         if (hasWallBlock(spawnY, spawnX) || !isValidPlayerPosition(spawnX, spawnY)) {
-            console.warn(`Ghost ${i} spawn position (${spawnX}, ${spawnY}) is invalid, finding backup position`);
+
             let foundValidPosition = false;
             
             // Search for any valid position
@@ -1979,13 +2209,13 @@ function generateGhosts() {
                         spawnX = x;
                         spawnY = y;
                         foundValidPosition = true;
-                        console.log(`Found backup spawn position for ghost ${i}: (${spawnX}, ${spawnY})`);
+
                     }
                 }
             }
             
             if (!foundValidPosition) {
-                console.error(`Could not find valid spawn position for ghost ${i}! Using (1,1)`);
+
                 spawnX = 1;
                 spawnY = 1;
             }
@@ -2020,7 +2250,7 @@ function generateGhosts() {
             isRespawning: false // Flag to track respawn state
         });
         
-        console.log(`Ghost ${i} spawned at (${spawnX}, ${spawnY}) with distance ${distanceFromPlayer} from player, is wall block: ${hasWallBlock(spawnY, spawnX)}`);
+
     }
 }
 
@@ -2050,12 +2280,12 @@ function updateGhostRespawn(ghost) {
                 ghost.state = GHOST_STATES.FRIGHTENED;
                 ghost.color = vec4(0.0, 0.0, 1.0, 1.0); // Blue when frightened
                 ghost.speed = GHOST_SPEEDS.FRIGHTENED;
-                console.log(`Ghost respawned during power mode - setting to frightened state`);
+
             } else {
-                ghost.state = GHOST_STATES.NORMAL;
-                ghost.color = ghost.originalColor;
-                ghost.speed = GHOST_SPEEDS.NORMAL;
-                console.log(`Ghost respawned normally`);
+            ghost.state = GHOST_STATES.NORMAL;
+            ghost.color = ghost.originalColor;
+            ghost.speed = GHOST_SPEEDS.NORMAL;
+
             }
             
             // Reset position to spawn point
@@ -2072,7 +2302,7 @@ function updateGhostRespawn(ghost) {
             ghost.worldX = ghost.x * cellSize + offsetX + cellSize / 2;
             ghost.worldZ = ghost.y * cellSize + offsetZ + cellSize / 2;
             
-            console.log(`Ghost respawned at spawn point (${ghost.spawnX}, ${ghost.spawnY})`);
+
             
             // Create respawn particle effect
             createParticleEffect(
@@ -2085,12 +2315,13 @@ function updateGhostRespawn(ghost) {
     }
 }
 
+// Nairran - AI Pathfinding Algorithms
 // A* Pathfinding Algorithm for Ghost AI
 function aStarPathfinding(startX, startY, goalX, goalY) {
     // Add debug logging for pathfinding attempts
     const debugPathfinding = Math.random() < 0.05; // Debug 5% of pathfinding attempts
     if (debugPathfinding) {
-        console.log(`A* pathfinding from (${startX},${startY}) to (${goalX},${goalY})`);
+
     }
     
     // Node structure for A* algorithm
@@ -2174,7 +2405,7 @@ function aStarPathfinding(startX, startY, goalX, goalY) {
                 node = node.parent;
             }
             if (debugPathfinding) {
-                console.log(`A* found path of length ${path.length} in ${iterations} iterations`);
+
             }
             return path;
         }
@@ -2224,7 +2455,7 @@ function aStarPathfinding(startX, startY, goalX, goalY) {
     
     // No path found
     if (debugPathfinding) {
-        console.log(`A* failed to find path after ${iterations} iterations`);
+
     }
     return null;
 }
@@ -2237,7 +2468,7 @@ function updateGhostMovement(ghost) {
     
     // Emergency check: if ghost is in a wall block, move it to a safe position
     if (hasWallBlock(ghost.y, ghost.x)) {
-        console.warn(`Ghost at (${ghost.x}, ${ghost.y}) is stuck in wall block, rescuing...`);
+
         
         // Try to find a nearby safe position
         let rescueSuccessful = false;
@@ -2251,7 +2482,7 @@ function updateGhostMovement(ghost) {
                         if (testX >= 0 && testX < mazeSize && testY >= 0 && testY < mazeSize &&
                             !hasWallBlock(testY, testX) && isValidPlayerPosition(testX, testY)) {
                             
-                            console.log(`Moving stuck ghost to safe position: (${testX}, ${testY})`);
+
                             ghost.x = testX;
                             ghost.y = testY;
                             ghost.targetX = testX;
@@ -2273,7 +2504,7 @@ function updateGhostMovement(ghost) {
         }
         
         if (!rescueSuccessful) {
-            console.error(`Could not rescue stuck ghost! Moving to spawn position.`);
+
             ghost.x = ghost.spawnX;
             ghost.y = ghost.spawnY;
             ghost.targetX = ghost.spawnX;
@@ -2332,8 +2563,17 @@ function updateGhostMovement(ghost) {
         // scatter and random behaviors remain unchanged during grace period
     }
     
+    // Priority override: flee from player when player is dead or respawning
+    if (gameState.waitingForRespawn || gameState.playerRespawning) {
+        effectiveBehavior = 'flee'; // Force all ghosts to flee from player during death/respawn states
+        if (gameState.waitingForRespawn) {
+
+        } else {
+
+        }
+    }
     // Override behavior if ghost is frightened during power mode
-    if (ghost.state === GHOST_STATES.FRIGHTENED) {
+    else if (ghost.state === GHOST_STATES.FRIGHTENED) {
         effectiveBehavior = 'flee'; // Run away from player
     } else if (ghost.state === GHOST_STATES.RETURNING) {
         effectiveBehavior = 'return'; // Return to spawn
@@ -2341,24 +2581,36 @@ function updateGhostMovement(ghost) {
     
     // Add debug logging for AI behavior
     if (Math.random() < 0.1) { // Log 10% of the time to avoid spam
-        console.log(`Ghost ${ghost.color} at (${ghost.x},${ghost.y}) using ${effectiveBehavior}, distance to player: ${distanceToPlayer}, grace period: ${isInGracePeriod}`);
+
     }
     
     switch (effectiveBehavior) {
         case 'flee':
-            // Run away from player during power mode
+            // Run away from player during power mode or respawn protection
+
             const fleeDirection = getFleeDirection(ghost);
+
             if (fleeDirection !== -1) {
                 const moves = getValidMoves(ghost.x, ghost.y);
+
                 if (moves[fleeDirection]) {
                     [newX, newY] = moves[fleeDirection];
+
+                } else {
+
                 }
             } else {
-                // If no good flee direction, move randomly
+
+            }
+            
+            // If no good flee direction, move randomly
+            if (newX === ghost.x && newY === ghost.y) {
                 const validMoves = getValidMoves(ghost.x, ghost.y);
                 const moveOptions = validMoves.filter(move => move !== null);
+
                 if (moveOptions.length > 0) {
                     [newX, newY] = moveOptions[Math.floor(Math.random() * moveOptions.length)];
+
                 }
             }
             break;
@@ -2381,10 +2633,10 @@ function updateGhostMovement(ghost) {
                     if (powerMode.active && powerMode.timeLeft > 1000) {
                         // If power mode has more than 1 second left, wait for it to end
                         ghost.respawnTimer = powerMode.timeLeft + 1000; // Add 1 extra second buffer
-                        console.log(`Ghost reached spawn during power mode, extending respawn timer to ${ghost.respawnTimer}ms`);
+
                     } else {
                         ghost.respawnTimer = GHOST_RESPAWN_TIME; // Normal 15-second respawn
-                        console.log(`Ghost reached spawn, starting normal respawn timer`);
+
                     }
                     
                     ghost.isRespawning = true;
@@ -2518,7 +2770,8 @@ function updateGhostMovement(ghost) {
 function updateGhostAnimation(ghost) {
     if (!ghost.moving) return;
     
-    ghost.animationProgress += deltaTime * ghostSpeed;
+    // Use individual ghost speed instead of fixed ghostSpeed constant
+    ghost.animationProgress += deltaTime * ghost.speed;
     
     if (ghost.animationProgress >= 1.0) {
         ghost.x = ghost.targetX;
@@ -2563,11 +2816,18 @@ function getFleeDirection(ghost) {
     const dx = player.x - ghost.x;
     const dy = player.y - ghost.y;
     
+
+
+    
     // Move in opposite direction from player
     if (Math.abs(dx) > Math.abs(dy)) {
-        return dx > 0 ? 3 : 1; // left : right (opposite of chase)
+        const direction = dx > 0 ? 3 : 1; // left : right (opposite of chase)
+
+        return direction;
     } else {
-        return dy > 0 ? 0 : 2; // up : down (opposite of chase)
+        const direction = dy > 0 ? 0 : 2; // up : down (opposite of chase)
+
+        return direction;
     }
 }
 
@@ -2633,7 +2893,7 @@ function checkGhostCollision() {
         if (collisionDetected) {
             // Add debug logging
             if (Math.random() < 0.1) { // Log 10% of collision checks to avoid spam
-                console.log(`Collision detected: Ghost state=${ghost.state}, powerMode=${powerMode.active}, grid(${ghost.x},${ghost.y}), player(${player.x},${player.y})`);
+
             }
             
             if (powerMode.active && ghost.state === GHOST_STATES.FRIGHTENED) {
@@ -2657,7 +2917,7 @@ function checkGhostCollision() {
                 gameState.score += bonusPoints;
                 powerMode.ghostsEaten++;
                 
-                console.log(`Ghost eaten! Bonus: ${bonusPoints} points. Will respawn in 15 seconds.`);
+
                 
                 // Start returning to spawn
                 ghost.state = GHOST_STATES.RETURNING;
@@ -2668,7 +2928,7 @@ function checkGhostCollision() {
                 createGhostsGeometry(); // Update ghost appearance
             } else if (ghost.state === GHOST_STATES.NORMAL || ghost.state === GHOST_STATES.FRIGHTENED) {
                 // Normal collision - player gets hit (only for active ghosts)
-                console.log(`Player hit by ghost in state: ${ghost.state}`);
+
                 playerHit();
                 break;
             }
@@ -2682,6 +2942,7 @@ function isGhostSpawnArea(x, y) {
     return false; // For now, allow ghosts anywhere except player start
 }
 
+// Nairran - Power-up Systems
 // Power-up system
 function activateDash() {
     dashSystem.active = true;
@@ -2697,10 +2958,81 @@ function activateDash() {
         player.worldZ
     );
     
-    console.log("Dash activated!");
+
+}
+
+// Overhead View System activation
+function activateOverheadView() {
+    overheadViewSystem.active = true;
+    overheadViewSystem.timeLeft = overheadViewSystem.duration;
+    overheadViewSystem.cooldownTimeLeft = overheadViewSystem.cooldown;
+    
+    // Store current camera angle and switch to overhead view
+    overheadViewSystem.originalCameraAngle = cameraAngle;
+    cameraAngle = 0; // Switch to top-down overhead view
+    
+    // Update camera angle slider to reflect change
+    document.getElementById("cameraAngle").value = cameraAngle;
+    document.getElementById("angleValue").textContent = cameraAngle;
+    
+    // Create overhead view activation particle effect (using different color)
+    createParticleEffect(
+        PARTICLE_TYPES.POWER_MODE_END, // Reuse gold particles for overhead view effect
+        player.worldX,
+        wallHeight/2 + player.radius,
+        player.worldZ
+    );
+    
+
 }
 
 function updatePowerUps() {
+    // Update brightness decay system (only during active gameplay)
+    if (gameState.isPlaying && gameState.lastPelletCollectionTime > 0) {
+        const timeSinceLastPellet = Date.now() - gameState.lastPelletCollectionTime;
+        const decayThreshold = 3000; // 3 seconds
+        
+        if (timeSinceLastPellet >= decayThreshold) {
+            if (!gameState.brightnessDecayActive) {
+                gameState.brightnessDecayActive = true;
+
+            }
+            
+            // Reduce brightness by 0.2 every 3 seconds, minimum 0.1
+            const decayInterval = 3000; // Decay every 3 seconds
+            const timeSinceDecayStart = timeSinceLastPellet - decayThreshold;
+            const decaySteps = Math.floor(timeSinceDecayStart / decayInterval);
+            const targetBrightness = Math.max(0.1, 2.0 - (decaySteps * 0.2));
+            
+            if (brightness > targetBrightness) {
+                brightness = targetBrightness;
+                document.getElementById("brightness").value = brightness;
+                document.getElementById("brightnessValue").textContent = parseFloat(brightness).toFixed(1);
+                
+                if (Math.random() < 0.1) { // Log occasionally to avoid spam
+
+                }
+            }
+        }
+    }
+    
+    // Update respawn protection system
+    if (gameState.playerRespawning && gameState.respawnProtectionTime > 0) {
+        gameState.respawnProtectionTime -= deltaTime * 1000;
+        
+        // Log every second for debugging
+        if (Math.floor(gameState.respawnProtectionTime / 1000) !== Math.floor((gameState.respawnProtectionTime + deltaTime * 1000) / 1000)) {
+            const secondsLeft = Math.ceil(gameState.respawnProtectionTime / 1000);
+
+        }
+        
+        if (gameState.respawnProtectionTime <= 0) {
+            gameState.playerRespawning = false;
+            gameState.respawnProtectionTime = 0;
+
+        }
+    }
+    
     // Update power mode
     if (powerMode.active) {
         powerMode.timeLeft -= deltaTime * 1000;
@@ -2743,7 +3075,7 @@ function updatePowerUps() {
                 }
             }
             
-            console.log("Power mode ended");
+
         }
     }
     
@@ -2753,7 +3085,7 @@ function updatePowerUps() {
         if (dashSystem.timeLeft <= 0) {
             dashSystem.active = false;
             player.speed = player.baseSpeed;
-            console.log("Dash ended");
+
         }
     }
     
@@ -2761,7 +3093,46 @@ function updatePowerUps() {
     if (dashSystem.cooldownTimeLeft > 0) {
         dashSystem.cooldownTimeLeft -= deltaTime * 1000;
         if (dashSystem.cooldownTimeLeft <= 0) {
-            console.log("Dash ready!");
+
+        }
+    }
+    
+    // Update overhead view system
+    if (overheadViewSystem.active) {
+        overheadViewSystem.timeLeft -= deltaTime * 1000;
+        if (overheadViewSystem.timeLeft <= 0) {
+            overheadViewSystem.active = false;
+            
+            // Return to appropriate camera angle based on maze type
+            let targetAngle = 50; // Default for perfect maze
+            if (mazeType === 'imperfect') {
+                targetAngle = 50;
+            } else if (mazeType === 'pacman') {
+                targetAngle = 65;
+            }
+            
+            cameraAngle = targetAngle;
+            originalCameraAngle = targetAngle;
+            document.getElementById("cameraAngle").value = cameraAngle;
+            document.getElementById("angleValue").textContent = cameraAngle;
+            
+
+            
+            // Create overhead view end particle effect
+            createParticleEffect(
+                PARTICLE_TYPES.POWER_MODE_START, // Blue particles for end effect
+                player.worldX,
+                wallHeight/2 + player.radius,
+                player.worldZ
+            );
+        }
+    }
+    
+    // Update overhead view cooldown
+    if (overheadViewSystem.cooldownTimeLeft > 0) {
+        overheadViewSystem.cooldownTimeLeft -= deltaTime * 1000;
+        if (overheadViewSystem.cooldownTimeLeft <= 0) {
+
         }
     }
 }
@@ -2782,13 +3153,45 @@ function playerHit() {
     if (gameState.lives <= 0) {
         gameOver();
     } else {
-        // Reset player position
-        player.x = 0;
-        player.y = 0;
-        updatePlayerWorldPosition();
+        // Set player into waiting for respawn state (manual respawn with Q key)
+        gameState.waitingForRespawn = true;
+        gameState.playerRespawning = false; // Not automatically respawning
+        gameState.respawnProtectionTime = 0; // No automatic timer
         
-        // Brief invincibility period could be added here
+        // Keep player at death location - they can't move until Q is pressed
+
+
+
     }
+}
+
+// Manual respawn function (triggered by Q key)
+function activateManualRespawn() {
+    // Only allow respawn if player is waiting for respawn and not currently alive/moving
+    if (!gameState.waitingForRespawn || gameState.playerRespawning) {
+
+        return false;
+    }
+    
+    // Activate respawn protection system for 3 seconds
+    gameState.waitingForRespawn = false;
+    gameState.playerRespawning = true;
+    gameState.respawnProtectionTime = 3000; // 3 seconds of protection
+    
+    // Player stays at death location during protection
+
+
+
+    
+    // Create respawn activation particle effect
+    createParticleEffect(
+        PARTICLE_TYPES.POWER_MODE_START, // Blue particles for respawn activation
+        player.worldX,
+        wallHeight/2 + player.radius,
+        player.worldZ
+    );
+    
+    return true;
 }
 
 function gameWin() {
@@ -3017,7 +3420,7 @@ function generatePowerPellets() {
         gameState.totalPowerPellets++;
     }
     
-    console.log(`Generated ${gameState.totalPowerPellets} power pellets`);
+
 }
 
 // Check for power pellet collection
@@ -3077,9 +3480,10 @@ function activatePowerMode() {
         }
     }
     
-    console.log("Power mode activated!");
+
 }
 
+// Nairran - Particle Effects System
 // Particle System for visual effects
 let particles = [];
 const maxParticles = 200;
@@ -3151,11 +3555,11 @@ const PARTICLE_CONFIGS = {
 function createParticleEffect(type, worldX, worldY, worldZ) {
     const config = PARTICLE_CONFIGS[type];
     if (!config) {
-        console.warn(`Unknown particle type: ${type}`);
+
         return;
     }
     
-    console.log(`Creating ${config.count} particles of type ${type} at (${worldX.toFixed(2)}, ${worldY.toFixed(2)}, ${worldZ.toFixed(2)})`);
+
     
     for (let i = 0; i < config.count; i++) {
         // Random direction and speed
@@ -3193,7 +3597,7 @@ function createParticleEffect(type, worldX, worldY, worldZ) {
         particles.splice(0, particles.length - maxParticles);
     }
     
-    console.log(`Total particles now: ${particles.length}`);
+
 }
 
 // Update all particles
@@ -3230,7 +3634,7 @@ function createParticlesGeometry() {
         return;
     }
     
-    console.log(`Creating geometry for ${particles.length} particles`);
+
     
     const vertices = [];
     const normals = [];
@@ -3249,11 +3653,11 @@ function createParticlesGeometry() {
     
     if (vertices.length === 0) {
         particlesCount = 0;
-        console.warn("No vertices created for particles");
+
         return;
     }
     
-    console.log(`Created ${vertices.length} vertices, ${indices.length} indices for particles`);
+
     
     // Set up buffers
     particlesBuffer = gl.createBuffer();
@@ -3273,7 +3677,7 @@ function createParticlesGeometry() {
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
     
     particlesCount = indices.length;
-    console.log(`Particles geometry created with ${particlesCount} indices`);
+
 }
 
 // Draw particles
@@ -3281,7 +3685,7 @@ function drawParticles() {
     if (particlesCount === 0) {
         // Only log when there should be particles but count is 0
         if (particles.length > 0) {
-            console.warn(`Particles exist (${particles.length}) but particlesCount is 0`);
+
         }
         return;
     }
@@ -3311,3 +3715,51 @@ function drawParticles() {
     // Disable blending
     gl.disable(gl.BLEND);
 } 
+
+// Get direction to move away from respawn area (0,0) during player respawning
+function getDirectionAwayFromRespawn(ghost) {
+    const respawnX = 0;
+    const respawnY = 0;
+    const dx = respawnX - ghost.x;
+    const dy = respawnY - ghost.y;
+    
+    // Move in opposite direction from respawn area
+    if (Math.abs(dx) > Math.abs(dy)) {
+        return dx > 0 ? 1 : 3; // right : left (away from respawn)
+    } else {
+        return dy > 0 ? 2 : 0; // down : up (away from respawn)
+    }
+}
+
+// Check if ghost is too close to respawn area (within protection radius)
+function isGhostTooCloseToRespawn(ghost) {
+    const respawnX = 0;
+    const respawnY = 0;
+    const protectionRadius = 4; // 4-cell radius around respawn point
+    
+    const distance = Math.abs(ghost.x - respawnX) + Math.abs(ghost.y - respawnY);
+    return distance <= protectionRadius;
+}
+
+// Get best move away from respawn area
+function getBestMoveAwayFromRespawn(ghost, validMoves) {
+    const respawnX = 0;
+    const respawnY = 0;
+    let bestMove = null;
+    let bestDistance = -1;
+    
+    for (let i = 0; i < validMoves.length; i++) {
+        if (validMoves[i]) {
+            const [moveX, moveY] = validMoves[i];
+            // Calculate Manhattan distance from respawn area after this move
+            const distance = Math.abs(moveX - respawnX) + Math.abs(moveY - respawnY);
+            
+            if (distance > bestDistance) {
+                bestDistance = distance;
+                bestMove = [moveX, moveY];
+            }
+        }
+    }
+    
+    return bestMove;
+}
