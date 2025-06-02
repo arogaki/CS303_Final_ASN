@@ -161,7 +161,7 @@ Choose from three distinct maze generation algorithms:
 - **Maze Type**: Choose your preferred algorithm
 - **Maze Size**: Adjust difficulty with grid size
 - **Camera Angle**: Set viewing perspective (auto-optimized per maze type)
-- **Brightness**: Adjust lighting for comfort
+- **Brightness**: Adjust lighting for comfort (auto-maximized after you start a game)
 
 ### In-Game HUD
 - **Score**: Current points earned
